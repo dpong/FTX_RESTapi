@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"time"
 )
 
 type GetBorrowRatesResponse struct {
@@ -56,14 +57,14 @@ func (p *Client) GetLendingRates() (lending *GetLendingRatesResponse) {
 	return lending
 }
 
-type BorrowHistoryResponse struct {
+type LendingHistoryResponse struct {
 	Success bool `json:"success"`
 	Result  []struct {
-		Coin     string  `json:"coin"`
-		Proceeds float64 `json:"proceeds"`
-		Rate     float64 `json:"rate"`
-		Size     float64 `json:"size"`
-		Time     string  `json:"time"`
+		Coin     string    `json:"coin"`
+		Proceeds float64   `json:"proceeds"`
+		Rate     float64   `json:"rate"`
+		Size     float64   `json:"size"`
+		Time     time.Time `json:"time"`
 	} `json:"result"`
 }
 
@@ -84,14 +85,14 @@ func (p *Client) GetBorrowHistory() (result *BorrowHistoryResponse) {
 	return result
 }
 
-type LendingHistoryResponse struct {
+type BorrowHistoryResponse struct {
 	Success bool `json:"success"`
 	Result  []struct {
-		Coin string  `json:"coin"`
-		Cost float64 `json:"cost"`
-		Rate float64 `json:"rate"`
-		Size float64 `json:"size"`
-		Time string  `json:"time"`
+		Coin string    `json:"coin"`
+		Cost float64   `json:"cost"`
+		Rate float64   `json:"rate"`
+		Size float64   `json:"size"`
+		Time time.Time `json:"time"`
 	} `json:"result"`
 }
 
@@ -113,14 +114,16 @@ func (p *Client) GetLendingHistory() (result *LendingHistoryResponse) {
 }
 
 type LendingInfoResponse struct {
-	Success bool `json:"success"`
-	Result  []struct {
-		Coin     string  `json:"coin"`
-		Lendable float64 `json:"lendable"`
-		Locked   float64 `json:"locked"`
-		MinRate  float64 `json:"minRate"`
-		Offered  float64 `json:"offered"`
-	} `json:"result"`
+	Success bool                 `json:"success"`
+	Result  []LendingInfoResults `json:"result"`
+}
+
+type LendingInfoResults struct {
+	Coin     string  `json:"coin"`
+	Lendable float64 `json:"lendable"`
+	Locked   float64 `json:"locked"`
+	MinRate  float64 `json:"minRate"`
+	Offered  float64 `json:"offered"`
 }
 
 func (p *Client) GetLendingInfo() (result *LendingInfoResponse) {

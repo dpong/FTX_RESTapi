@@ -91,7 +91,7 @@ func (p *Client) CancelByID(oid int) (status *ResponseByCancelOrder) {
 		fmt.Sprintf("/orders/%d", oid),
 		nil, nil)
 	if err != nil {
-		p.Logger.Println(err)
+		//p.Logger.Println(err)
 		return nil
 	}
 	// in Close()
