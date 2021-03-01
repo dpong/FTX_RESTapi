@@ -74,15 +74,17 @@ func (p *Client) Leverage(n int) (leverage interface{}) {
 }
 
 type Balance struct {
-	Success bool `json:"success"`
-	Result  []struct {
-		Coin                   string  `json:"coin"`
-		Free                   float64 `json:"free"`
-		Total                  float64 `json:"total"`
-		AvailableWithoutBorrow float64 `json:"availableWithoutBorrow"`
-		Borrowed               float64 `json:"spotBorrow"`
-		USDValue               float64 `json:"usdValue"`
-	} `json:"result"`
+	Success bool              `json:"success"`
+	Result  []CoinsFromBalance `json:"result"`
+}
+
+type CoinsFromBalance struct {
+	Coin                   string  `json:"coin"`
+	Free                   float64 `json:"free"`
+	Total                  float64 `json:"total"`
+	AvailableWithoutBorrow float64 `json:"availableWithoutBorrow"`
+	Borrowed               float64 `json:"spotBorrow"`
+	USDValue               float64 `json:"usdValue"`
 }
 
 func (p *Client) Balances() (balances *Balance) {
