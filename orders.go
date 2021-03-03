@@ -39,26 +39,23 @@ type ResponseByOrder struct {
 	} `json:"result"`
 }
 
-func (p *Client) PlaceOrder(o *RequestForOrder) (order *ResponseByOrder) {
+func (p *Client) PlaceOrder(o *RequestForOrder) (order *ResponseByOrder, err error) {
 	body, err := json.Marshal(&o)
 	if err != nil {
-		p.Logger.Println(err)
+		return nil, err
 	}
 	res, err := p.sendRequest(
 		http.MethodPost,
 		"/orders",
 		body, nil)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-	// in Close()
 	err = decode(res, &order)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-	return order
+	return order, nil
 }
 
 type ResponseByCancelOrder struct {
@@ -85,22 +82,19 @@ func (p *Client) CancelAll() {
 	//return status
 }
 
-func (p *Client) CancelByID(oid int) (status *ResponseByCancelOrder) {
+func (p *Client) CancelByID(oid int) (status *ResponseByCancelOrder, err error) {
 	res, err := p.sendRequest(
 		http.MethodDelete,
 		fmt.Sprintf("/orders/%d", oid),
 		nil, nil)
 	if err != nil {
-		//p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-	// in Close()
 	err = decode(res, &status)
 	if err != nil {
-		//p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-	return status
+	return status, nil
 }
 
 type ResponseByOrderStatus struct {

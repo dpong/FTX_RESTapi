@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -101,7 +102,7 @@ func (c *Client) sendRequest(method, spath string, body []byte, params *map[stri
 	}
 	if res.StatusCode != 200 {
 		//c.Logger.Printf("status: %s", res.Status)
-		return nil, fmt.Errorf("faild to get data. status: %s", res.Status)
+		return nil, errors.New(res.Status)
 	}
 	return res, nil
 }
