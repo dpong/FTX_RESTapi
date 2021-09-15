@@ -63,15 +63,14 @@ type ResponseByCancelOrder struct {
 	Result  string `json:"result"`
 }
 
-func (p *Client) CancelAll() {
+func (p *Client) CancelAll() (err error) {
 	//reader := bytes.NewBuffer(bytesData)
-	_, err := p.sendRequest(
+	_, err = p.sendRequest(
 		http.MethodDelete,
 		"/orders",
 		nil, nil)
 	if err != nil {
-		p.Logger.Println(err)
-		//return nil
+		return err
 	}
 	// in Close()
 	//err = decode(res, &status)
@@ -80,6 +79,7 @@ func (p *Client) CancelAll() {
 	//	return nil
 	//}
 	//return status
+	return nil
 }
 
 func (p *Client) CancelByID(oid int) (status *ResponseByCancelOrder, err error) {
@@ -119,20 +119,18 @@ type ResponseByOrderStatus struct {
 	} `json:"result"`
 }
 
-func (p *Client) GetOrderStatus(oid int) (status *ResponseByOrderStatus) {
+func (p *Client) GetOrderStatus(oid int) (status *ResponseByOrderStatus, err error) {
 	res, err := p.sendRequest(
 		http.MethodGet,
 		fmt.Sprintf("/orders/%d", oid),
 		nil, nil)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
 	// in Close()
 	err = decode(res, &status)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-	return status
+	return status, nil
 }

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -26,10 +25,9 @@ type Client struct {
 	key, secret string
 	subaccount  string
 	HTTPC       *http.Client
-	Logger      *log.Logger
 }
 
-func New(key, secret, subaccount string, log *log.Logger) *Client {
+func New(key, secret, subaccount string) *Client {
 	hc := &http.Client{
 		Timeout: 10 * time.Second,
 	}
@@ -38,7 +36,6 @@ func New(key, secret, subaccount string, log *log.Logger) *Client {
 		secret:     secret,
 		subaccount: subaccount,
 		HTTPC:      hc,
-		Logger:     log,
 	}
 }
 
@@ -70,7 +67,6 @@ func (p *Client) newRequest(method, spath string, body []byte, params *map[strin
 	signture := MakeHMAC(p.secret, payload)
 	req, err := http.NewRequest(method, u.String(), strings.NewReader(string(body)))
 	if err != nil {
-		p.Logger.Println(err)
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -92,12 +88,10 @@ func MakeHMAC(secret, body string) string {
 func (c *Client) sendRequest(method, spath string, body []byte, params *map[string]string) (*http.Response, error) {
 	req, err := c.newRequest(method, spath, body, params)
 	if err != nil {
-		c.Logger.Println(err)
 		return nil, err
 	}
 	res, err := c.HTTPC.Do(req)
 	if err != nil {
-		c.Logger.Println(err)
 		return nil, err
 	}
 	if res.StatusCode != 200 {

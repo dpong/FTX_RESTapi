@@ -24,7 +24,7 @@ type FundingPaymentResponse struct {
 	} `json:"result"`
 }
 
-func (p *Client) Fundings(symbol, start, end string) (futures *FundingResponse) {
+func (p *Client) Fundings(symbol, start, end string) (futures *FundingResponse, err error) {
 	params := make(map[string]string)
 	if symbol != "" {
 		params["future"] = symbol
@@ -37,33 +37,29 @@ func (p *Client) Fundings(symbol, start, end string) (futures *FundingResponse) 
 	}
 	res, err := p.sendRequest(http.MethodGet, "/funding_rates", nil, &params)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
 	// in Close()
 	err = decode(res, &futures)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-	return futures
+	return futures, nil
 }
 
-func (p *Client) FundingsPayment(symbol string) (futures *FundingPaymentResponse) {
+func (p *Client) FundingsPayment(symbol string) (futures *FundingPaymentResponse, err error) {
 	params := make(map[string]string)
 	if symbol != "" {
 		params["future"] = symbol
 	}
 	res, err := p.sendRequest(http.MethodGet, "/funding_payments", nil, &params)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
 	// in Close()
 	err = decode(res, &futures)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-	return futures
+	return futures, nil
 }

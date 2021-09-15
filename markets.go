@@ -54,51 +54,44 @@ type Future struct {
 	} `json:"result"`
 }
 
-func (p *Client) Markets() (markets *Market) {
+func (p *Client) Markets() (markets *Market, err error) {
 	res, err := p.sendRequest(http.MethodGet, "/markets", nil, nil)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
 	// in Close()
 	err = decode(res, &markets)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-
-	return markets
+	return markets, nil
 }
 
-func (p *Client) Futures() (futures *Future) {
+func (p *Client) Futures() (futures *Future, err error) {
 	res, err := p.sendRequest(http.MethodGet, "/futures", nil, nil)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
 	// in Close()
 	err = decode(res, &futures)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-	return futures
+	return futures, nil
 }
 
-func (p *Client) FutureStats(symbol string) (futures *FutureStatsResponse) {
+func (p *Client) FutureStats(symbol string) (futures *FutureStatsResponse, err error) {
 	path := fmt.Sprintf("/futures/%s/stats", symbol)
 	res, err := p.sendRequest(http.MethodGet, path, nil, nil)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
 	// in Close()
 	err = decode(res, &futures)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-	return futures
+	return futures, nil
 }
 
 type FutureStatsResponse struct {

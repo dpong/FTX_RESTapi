@@ -25,22 +25,20 @@ type Account struct {
 	} `json:"result"`
 }
 
-func (p *Client) Account() (account *Account) {
+func (p *Client) Account() (account *Account, err error) {
 	res, err := p.sendRequest(
 		http.MethodGet,
 		"/account",
 		nil, nil)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
 	// in Close()
 	err = decode(res, &account)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-	return account
+	return account, nil
 }
 
 type ResponseByLeverageChanged struct {
@@ -48,33 +46,30 @@ type ResponseByLeverageChanged struct {
 	Success bool        `json:"success"`
 }
 
-func (p *Client) Leverage(n int) (leverage interface{}) {
+func (p *Client) Leverage(n int) (leverage interface{}, err error) {
 	params := make(map[string]interface{})
 	params["leverage"] = n
 	body, err := json.Marshal(params)
 	if err != nil {
-		p.Logger.Println(err)
-		return 0
+		return 0, err
 	}
 	res, err := p.sendRequest(
 		http.MethodPost,
 		"/account/leverage",
 		body, nil)
 	if err != nil {
-		p.Logger.Println(err)
-		return 0
+		return 0, err
 	}
 	// in Close()
 	err = decode(res, &leverage)
 	if err != nil {
-		p.Logger.Println(err)
-		return 0
+		return 0, err
 	}
-	return leverage
+	return leverage, nil
 }
 
 type Balance struct {
-	Success bool              `json:"success"`
+	Success bool               `json:"success"`
 	Result  []CoinsFromBalance `json:"result"`
 }
 
@@ -87,20 +82,18 @@ type CoinsFromBalance struct {
 	USDValue               float64 `json:"usdValue"`
 }
 
-func (p *Client) Balances() (balances *Balance) {
+func (p *Client) Balances() (balances *Balance, err error) {
 	res, err := p.sendRequest(
 		http.MethodGet,
 		"/wallet/balances",
 		nil, nil)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
 	// in Close()
 	err = decode(res, &balances)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-	return balances
+	return balances, nil
 }

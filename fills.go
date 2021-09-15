@@ -27,7 +27,7 @@ type FillsResponse struct {
 	} `json:"result"`
 }
 
-func (p *Client) GetFills(symbol string, limit int) (fills *FillsResponse) {
+func (p *Client) GetFills(symbol string, limit int) (fills *FillsResponse, err error) {
 	params := make(map[string]string)
 	params["market"] = symbol
 	params["limit"] = fmt.Sprintf("%d", limit)
@@ -35,14 +35,12 @@ func (p *Client) GetFills(symbol string, limit int) (fills *FillsResponse) {
 		http.MethodGet, "/fills",
 		nil, &params)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
 	// in Close()
 	err = decode(res, &fills)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-	return fills
+	return fills, nil
 }

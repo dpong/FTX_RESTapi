@@ -23,7 +23,7 @@ type TransferInSubaccountResponse struct {
 	} `json:"result"`
 }
 
-func (p *Client) TransferInSubaccounts(asset, from, to string, size float64) (transfer *TransferInSubaccountResponse) {
+func (p *Client) TransferInSubaccounts(asset, from, to string, size float64) (transfer *TransferInSubaccountResponse, err error) {
 	params := make(map[string]interface{})
 	params["coin"] = asset
 	params["size"] = size
@@ -31,23 +31,20 @@ func (p *Client) TransferInSubaccounts(asset, from, to string, size float64) (tr
 	params["destination"] = to
 	body, err := json.Marshal(params)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
 	res, err := p.sendRequest(
 		http.MethodPost,
 		"/subaccounts/transfer",
 		body, nil)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
 	err = decode(res, &transfer)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-	return transfer
+	return transfer, nil
 }
 
 type WithdrawOpts struct {
@@ -74,7 +71,7 @@ type WithdrawResponse struct {
 	} `json:"result"`
 }
 
-func (p *Client) Withdraw(asset, address, password string, size float64) (withdraw *WithdrawResponse) {
+func (p *Client) Withdraw(asset, address, password string, size float64) (withdraw *WithdrawResponse, err error) {
 	params := make(map[string]interface{})
 	params["coin"] = asset
 	params["size"] = size
@@ -82,21 +79,18 @@ func (p *Client) Withdraw(asset, address, password string, size float64) (withdr
 	params["password"] = password
 	body, err := json.Marshal(params)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
 	res, err := p.sendRequest(
 		http.MethodPost,
 		"/wallet/withdrawals",
 		body, nil)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
 	err = decode(res, &withdraw)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-	return withdraw
+	return withdraw, nil
 }

@@ -15,21 +15,19 @@ type GetBorrowRatesResponse struct {
 	} `json:"result"`
 }
 
-func (p *Client) GetBorrowRates() (borrow *GetBorrowRatesResponse) {
+func (p *Client) GetBorrowRates() (borrow *GetBorrowRatesResponse, err error) {
 	res, err := p.sendRequest(
 		http.MethodGet,
 		"/spot_margin/borrow_rates",
 		nil, nil)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
 	err = decode(res, &borrow)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-	return borrow
+	return borrow, nil
 }
 
 type GetLendingRatesResponse struct {
@@ -41,21 +39,19 @@ type GetLendingRatesResponse struct {
 	} `json:"result"`
 }
 
-func (p *Client) GetLendingRates() (lending *GetLendingRatesResponse) {
+func (p *Client) GetLendingRates() (lending *GetLendingRatesResponse, err error) {
 	res, err := p.sendRequest(
 		http.MethodGet,
 		"/spot_margin/lending_rates",
 		nil, nil)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
 	err = decode(res, &lending)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-	return lending
+	return lending, nil
 }
 
 type LendingHistoryResponse struct {
@@ -69,21 +65,19 @@ type LendingHistoryResponse struct {
 	} `json:"result"`
 }
 
-func (p *Client) GetBorrowHistory() (result *BorrowHistoryResponse) {
+func (p *Client) GetBorrowHistory() (result *BorrowHistoryResponse, err error) {
 	res, err := p.sendRequest(
 		http.MethodGet,
 		"/spot_margin/borrow_history",
 		nil, nil)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
 	err = decode(res, &result)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-	return result
+	return result, nil
 }
 
 type BorrowHistoryResponse struct {
@@ -97,21 +91,19 @@ type BorrowHistoryResponse struct {
 	} `json:"result"`
 }
 
-func (p *Client) GetLendingHistory() (result *LendingHistoryResponse) {
+func (p *Client) GetLendingHistory() (result *LendingHistoryResponse, err error) {
 	res, err := p.sendRequest(
 		http.MethodGet,
 		"/spot_margin/lending_history",
 		nil, nil)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
 	err = decode(res, &result)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-	return result
+	return result, nil
 }
 
 type LendingInfoResponse struct {
@@ -127,21 +119,19 @@ type LendingInfoResults struct {
 	Offered  float64 `json:"offered"`
 }
 
-func (p *Client) GetLendingInfo() (result *LendingInfoResponse) {
+func (p *Client) GetLendingInfo() (result *LendingInfoResponse, err error) {
 	res, err := p.sendRequest(
 		http.MethodGet,
 		"/spot_margin/lending_info",
 		nil, nil)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
 	err = decode(res, &result)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-	return result
+	return result, nil
 }
 
 type MarginMarketInfoResults struct {
@@ -155,7 +145,7 @@ type MarginMarketInfoResults struct {
 	} `json:"result"`
 }
 
-func (p *Client) GetMarginMarketInfo(symbol string) (result *MarginMarketInfoResults) {
+func (p *Client) GetMarginMarketInfo(symbol string) (result *MarginMarketInfoResults, err error) {
 	var buffer bytes.Buffer
 	buffer.WriteString("/spot_margin/market_info?market=")
 	buffer.WriteString(symbol)
@@ -164,15 +154,13 @@ func (p *Client) GetMarginMarketInfo(symbol string) (result *MarginMarketInfoRes
 		buffer.String(),
 		nil, nil)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
 	err = decode(res, &result)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-	return result
+	return result, nil
 }
 
 type SubmitLendingOfferResponse struct {
@@ -180,28 +168,25 @@ type SubmitLendingOfferResponse struct {
 	Result  interface{} `json:"result"`
 }
 
-func (p *Client) SubmitLendingOffer(coin string, amount, rate float64) (result *SubmitLendingOfferResponse) {
+func (p *Client) SubmitLendingOffer(coin string, amount, rate float64) (result *SubmitLendingOfferResponse, err error) {
 	params := make(map[string]interface{})
 	params["coin"] = coin
 	params["size"] = amount
 	params["rate"] = rate
 	body, err := json.Marshal(params)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
 	res, err := p.sendRequest(
 		http.MethodPost,
 		"/spot_margin/offers",
 		body, nil)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
 	err = decode(res, &result)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-	return result
+	return result, nil
 }

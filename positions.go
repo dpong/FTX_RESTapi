@@ -27,7 +27,7 @@ type Positions struct {
 	BreakEvenPrice               float64 `json:"recentBreakEvenPrice, omitempty"`
 }
 
-func (p *Client) Positions() (positions *PositionResponse) {
+func (p *Client) Positions() (positions *PositionResponse, err error) {
 	params := make(map[string]string)
 	params["showAvgPrice"] = "true"
 	res, err := p.sendRequest(
@@ -35,14 +35,12 @@ func (p *Client) Positions() (positions *PositionResponse) {
 		"/positions",
 		nil, &params)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
 	// in Close()
 	err = decode(res, &positions)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-	return positions
+	return positions, nil
 }

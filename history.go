@@ -20,7 +20,7 @@ type HistoryData struct {
 	Volume float64   `json:"volume"`
 }
 
-func (p *Client) HistoryData(ticker string, start, end time.Time, resolution int) (historys *HistoryResponse) {
+func (p *Client) HistoryData(ticker string, start, end time.Time, resolution int) (historys *HistoryResponse, err error) {
 	params := make(map[string]string)
 	if start.IsZero() == true && end.IsZero() == true {
 		params["limit"] = fmt.Sprintf("%v", 5000)
@@ -36,14 +36,12 @@ func (p *Client) HistoryData(ticker string, start, end time.Time, resolution int
 			ticker),
 		nil, &params)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
 	// in Close()
 	err = decode(res, &historys)
 	if err != nil {
-		p.Logger.Println(err)
-		return nil
+		return nil, err
 	}
-	return historys
+	return historys, nil
 }
