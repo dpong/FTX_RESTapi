@@ -15,11 +15,22 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const timeLayout = "2006-01-02T15:04:05.999999+00:00"
+
 type OrderBookBranch struct {
 	Bids       BookBranch
 	Asks       BookBranch
 	SnapShoted bool
 	Cancel     *context.CancelFunc
+	BuyTrade   TradeImpact
+	SellTrade  TradeImpact
+	LookBack   time.Duration
+}
+
+type TradeImpact struct {
+	mux   sync.RWMutex
+	Stamp []time.Time
+	Qty   []decimal.Decimal
 }
 
 type BookBranch struct {
@@ -212,6 +223,10 @@ func (o *OrderBookBranch) Close() {
 	o.Asks.mux.Unlock()
 }
 
+func (o *OrderBookBranch) SetLookBackSec(input int) {
+	o.LookBack = time.Duration(input) * time.Second
+}
+
 // return bids, ready or not
 func (o *OrderBookBranch) GetBids() ([][]string, bool) {
 	o.Bids.mux.RLock()
@@ -254,8 +269,37 @@ func (o *OrderBookBranch) GetAskMicro(idx int) (*BookMicro, bool) {
 	return &micro, true
 }
 
+func (o *OrderBookBranch) GetBuyImpactQty() decimal.Decimal {
+	o.BuyTrade.mux.RLock()
+	defer o.BuyTrade.mux.RUnlock()
+	var total decimal.Decimal
+	now := time.Now()
+	for i, st := range o.BuyTrade.Stamp {
+		if now.After(st.Add(o.LookBack)) {
+			continue
+		}
+		total = total.Add(o.BuyTrade.Qty[i])
+	}
+	return total
+}
+
+func (o *OrderBookBranch) GetSellImpactQty() decimal.Decimal {
+	o.SellTrade.mux.RLock()
+	defer o.SellTrade.mux.RUnlock()
+	var total decimal.Decimal
+	now := time.Now()
+	for i, st := range o.SellTrade.Stamp {
+		if now.After(st.Add(o.LookBack)) {
+			continue
+		}
+		total = total.Add(o.SellTrade.Qty[i])
+	}
+	return total
+}
+
 func LocalOrderBook(symbol string, logger *log.Logger) *OrderBookBranch {
 	var o OrderBookBranch
+	o.SetLookBackSec(5) // default 5 sec
 	ctx, cancel := context.WithCancel(context.Background())
 	o.Cancel = &cancel
 	bookticker := make(chan map[string]interface{}, 50)
@@ -308,26 +352,103 @@ func (o *OrderBookBranch) MaintainOrderBook(
 			return
 		default:
 			message := <-(*bookticker)
-			if len(message) != 0 {
-				action, ok := message["action"].(string)
-				if !ok {
-					continue
-				}
-				switch action {
-				case "partial":
-					o.InitialOrderBook(&message)
-				case "update":
-					o.UpdateNewComing(&message)
-					checkSum := uint32((*&message)["checksum"].(float64))
-					if err := o.CheckCheckSum(checkSum); err != nil {
-						// restart local orderbook
-						*refreshCh <- "refresh"
-						return
-					}
-				}
+			channel, ok := message["channel"].(string)
+			if !ok {
+				continue
+			}
+			switch channel {
+			case "orderbook":
+				o.ChannelOrderBook(&message, refreshCh)
+			case "trades":
+				o.ChannelTrades(&message)
 			}
 		}
 	}
+}
+
+func (o *OrderBookBranch) ChannelOrderBook(message *map[string]interface{}, refreshCh *chan string) {
+	data, ok := (*message)["data"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	if len(data) == 0 {
+		return
+	}
+	action, ok := data["action"].(string)
+	if !ok {
+		return
+	}
+	switch action {
+	case "partial":
+		o.InitialOrderBook(&data)
+	case "update":
+		o.UpdateNewComing(&data)
+		checkSum := uint32((*&data)["checksum"].(float64))
+		if err := o.CheckCheckSum(checkSum); err != nil {
+			// restart local orderbook
+			*refreshCh <- "refresh"
+			return
+		}
+	}
+}
+
+func (o *OrderBookBranch) ChannelTrades(message *map[string]interface{}) {
+	data, ok := (*message)["data"].([]interface{})
+	if !ok {
+		return
+	}
+	if len(data) == 0 {
+		return
+	}
+	for _, item := range data {
+		itemMap := item.(map[string]interface{})
+		price := decimal.NewFromFloat(itemMap["price"].(float64))
+		size := decimal.NewFromFloat(itemMap["size"].(float64))
+		side := itemMap["side"].(string)
+		stamp, err := time.Parse(timeLayout, itemMap["time"].(string))
+		if err != nil {
+			continue
+		}
+		o.LocateTradeImpact(side, price, size, stamp)
+	}
+	var wg sync.WaitGroup
+	wg.Add(2)
+	now := time.Now()
+	go func() {
+		defer wg.Done()
+		o.BuyTrade.mux.Lock()
+		defer o.BuyTrade.mux.Unlock()
+		var loc int = -1
+		for i, st := range o.BuyTrade.Stamp {
+			if !now.After(st.Add(o.LookBack)) {
+				break
+			}
+			loc = i
+		}
+		if loc == -1 {
+			return
+		}
+		o.BuyTrade.Stamp = o.BuyTrade.Stamp[loc+1:]
+		o.BuyTrade.Qty = o.BuyTrade.Qty[loc+1:]
+	}()
+	go func() {
+		defer wg.Done()
+		o.SellTrade.mux.Lock()
+		defer o.SellTrade.mux.Unlock()
+		var loc int = -1
+		for i, st := range o.SellTrade.Stamp {
+			if !now.After(st.Add(o.LookBack)) {
+				break
+			}
+			loc = i
+		}
+		if loc == -1 {
+			return
+		}
+		o.SellTrade.Stamp = o.SellTrade.Stamp[loc+1:]
+		o.SellTrade.Qty = o.SellTrade.Qty[loc+1:]
+	}()
+	wg.Wait()
 }
 
 func (o *OrderBookBranch) CheckCheckSum(checkSum uint32) error {
@@ -353,6 +474,21 @@ func (o *OrderBookBranch) CheckCheckSum(checkSum uint32) error {
 		return errors.New("checkSum error")
 	}
 	return nil
+}
+
+func (o *OrderBookBranch) LocateTradeImpact(side string, price, size decimal.Decimal, st time.Time) {
+	switch side {
+	case "buy":
+		o.BuyTrade.mux.Lock()
+		defer o.BuyTrade.mux.Unlock()
+		o.BuyTrade.Qty = append(o.BuyTrade.Qty, size)
+		o.BuyTrade.Stamp = append(o.BuyTrade.Stamp, st)
+	case "sell":
+		o.SellTrade.mux.Lock()
+		defer o.SellTrade.mux.Unlock()
+		o.SellTrade.Qty = append(o.SellTrade.Qty, size)
+		o.SellTrade.Stamp = append(o.SellTrade.Stamp, st)
+	}
 }
 
 func FloatHandle(f float64) string {
@@ -473,15 +609,13 @@ func FTXOrderBookSocket(
 	if err := w.Conn.WriteMessage(websocket.TextMessage, send); err != nil {
 		return err
 	}
-	/*
-		send, err = GetFTXTradesSubscribeMessage(symbol)
-		if err != nil {
-			return err
-		}
-		if err := w.Conn.WriteMessage(websocket.TextMessage, send); err != nil {
-			return err
-		}
-	*/
+	send, err = GetFTXTradesSubscribeMessage(symbol)
+	if err != nil {
+		return err
+	}
+	if err := w.Conn.WriteMessage(websocket.TextMessage, send); err != nil {
+		return err
+	}
 	if err := w.Conn.SetReadDeadline(time.Now().Add(time.Second * duration)); err != nil {
 		return err
 	}
@@ -563,17 +697,9 @@ func HandleFTXWebsocket(res *map[string]interface{}, mainCh *chan map[string]int
 			return err
 		}
 	case "partial":
-		data, ok := (*res)["data"].(map[string]interface{})
-		if !ok {
-			return errors.New("fail to get data when HandleFTXWebsocket() on partial type")
-		}
-		*mainCh <- data
+		*mainCh <- *res
 	case "update":
-		data, ok := (*res)["data"].(map[string]interface{})
-		if !ok {
-			return errors.New("fail to get data when HandleFTXWebsocket() on update type")
-		}
-		*mainCh <- data
+		*mainCh <- *res
 	default:
 		//pass
 	}
