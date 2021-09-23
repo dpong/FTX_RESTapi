@@ -28,9 +28,10 @@ type OrderBookBranch struct {
 }
 
 type TradeImpact struct {
-	mux   sync.RWMutex
-	Stamp []time.Time
-	Qty   []decimal.Decimal
+	mux      sync.RWMutex
+	Stamp    []time.Time
+	Qty      []decimal.Decimal
+	Notional []decimal.Decimal
 }
 
 type BookBranch struct {
@@ -269,7 +270,7 @@ func (o *OrderBookBranch) GetAskMicro(idx int) (*BookMicro, bool) {
 	return &micro, true
 }
 
-func (o *OrderBookBranch) GetBuyImpactQty() decimal.Decimal {
+func (o *OrderBookBranch) GetBuyImpactNotion() decimal.Decimal {
 	o.BuyTrade.mux.RLock()
 	defer o.BuyTrade.mux.RUnlock()
 	var total decimal.Decimal
@@ -278,12 +279,12 @@ func (o *OrderBookBranch) GetBuyImpactQty() decimal.Decimal {
 		if now.After(st.Add(o.LookBack)) {
 			continue
 		}
-		total = total.Add(o.BuyTrade.Qty[i])
+		total = total.Add(o.BuyTrade.Notional[i])
 	}
 	return total
 }
 
-func (o *OrderBookBranch) GetSellImpactQty() decimal.Decimal {
+func (o *OrderBookBranch) GetSellImpactNotion() decimal.Decimal {
 	o.SellTrade.mux.RLock()
 	defer o.SellTrade.mux.RUnlock()
 	var total decimal.Decimal
@@ -292,7 +293,7 @@ func (o *OrderBookBranch) GetSellImpactQty() decimal.Decimal {
 		if now.After(st.Add(o.LookBack)) {
 			continue
 		}
-		total = total.Add(o.SellTrade.Qty[i])
+		total = total.Add(o.SellTrade.Notional[i])
 	}
 	return total
 }
@@ -430,6 +431,7 @@ func (o *OrderBookBranch) ChannelTrades(message *map[string]interface{}) {
 		}
 		o.BuyTrade.Stamp = o.BuyTrade.Stamp[loc+1:]
 		o.BuyTrade.Qty = o.BuyTrade.Qty[loc+1:]
+		o.BuyTrade.Notional = o.BuyTrade.Notional[loc+1:]
 	}()
 	go func() {
 		defer wg.Done()
@@ -447,6 +449,7 @@ func (o *OrderBookBranch) ChannelTrades(message *map[string]interface{}) {
 		}
 		o.SellTrade.Stamp = o.SellTrade.Stamp[loc+1:]
 		o.SellTrade.Qty = o.SellTrade.Qty[loc+1:]
+		o.SellTrade.Notional = o.SellTrade.Notional[loc+1:]
 	}()
 	wg.Wait()
 }
@@ -483,11 +486,13 @@ func (o *OrderBookBranch) LocateTradeImpact(side string, price, size decimal.Dec
 		defer o.BuyTrade.mux.Unlock()
 		o.BuyTrade.Qty = append(o.BuyTrade.Qty, size)
 		o.BuyTrade.Stamp = append(o.BuyTrade.Stamp, st)
+		o.BuyTrade.Notional = append(o.BuyTrade.Notional, price.Mul(size))
 	case "sell":
 		o.SellTrade.mux.Lock()
 		defer o.SellTrade.mux.Unlock()
 		o.SellTrade.Qty = append(o.SellTrade.Qty, size)
 		o.SellTrade.Stamp = append(o.SellTrade.Stamp, st)
+		o.SellTrade.Notional = append(o.SellTrade.Notional, price.Mul(size))
 	}
 }
 
