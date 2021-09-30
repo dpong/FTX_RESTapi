@@ -25,6 +25,8 @@ type OrderBookBranch struct {
 	BuyTrade   TradeImpact
 	SellTrade  TradeImpact
 	LookBack   time.Duration
+	fromLevel  int
+	toLevel    int
 }
 
 type TradeImpact struct {
@@ -228,6 +230,12 @@ func (o *OrderBookBranch) SetLookBackSec(input int) {
 	o.LookBack = time.Duration(input) * time.Second
 }
 
+// top of the book is 1, to the level you want to sum all the notions
+func (o *OrderBookBranch) SetImpactCumRange(toLevel int) {
+	o.fromLevel = 0
+	o.toLevel = toLevel - 1
+}
+
 // return bids, ready or not
 func (o *OrderBookBranch) GetBids() ([][]string, bool) {
 	o.Bids.mux.RLock()
@@ -298,9 +306,86 @@ func (o *OrderBookBranch) GetSellImpactNotion() decimal.Decimal {
 	return total
 }
 
+func (o *OrderBookBranch) CalBidCumNotional() (decimal.Decimal, bool) {
+	if len(o.Bids.Book) == 0 {
+		return decimal.NewFromFloat(0), false
+	}
+	if o.fromLevel > o.toLevel {
+		return decimal.NewFromFloat(0), false
+	}
+	o.Bids.mux.RLock()
+	defer o.Bids.mux.RUnlock()
+	var total decimal.Decimal
+	for level, item := range o.Bids.Book {
+		if level >= o.fromLevel && level <= o.toLevel {
+			price, _ := decimal.NewFromString(item[0])
+			qty, _ := decimal.NewFromString(item[1])
+			total = total.Add(qty.Mul(price))
+		} else if level > o.toLevel {
+			break
+		}
+	}
+	return total, true
+}
+
+func (o *OrderBookBranch) CalAskCumNotional() (decimal.Decimal, bool) {
+	if len(o.Asks.Book) == 0 {
+		return decimal.NewFromFloat(0), false
+	}
+	if o.fromLevel > o.toLevel {
+		return decimal.NewFromFloat(0), false
+	}
+	o.Asks.mux.RLock()
+	defer o.Asks.mux.RUnlock()
+	var total decimal.Decimal
+	for level, item := range o.Asks.Book {
+		if level >= o.fromLevel && level <= o.toLevel {
+			price, _ := decimal.NewFromString(item[0])
+			qty, _ := decimal.NewFromString(item[1])
+			total = total.Add(qty.Mul(price))
+		} else if level > o.toLevel {
+			break
+		}
+	}
+	return total, true
+}
+
+func (o *OrderBookBranch) IsBigImpactOnBid() bool {
+	impact := o.GetSellImpactNotion()
+	rest, ok := o.CalBidCumNotional()
+	if !ok {
+		return false
+	}
+	micro, ok := o.GetBidMicro(o.fromLevel)
+	if !ok {
+		return false
+	}
+	if impact.GreaterThanOrEqual(rest) && micro.Trend == "cut" {
+		return true
+	}
+	return false
+}
+
+func (o *OrderBookBranch) IsBigImpactOnAsk() bool {
+	impact := o.GetBuyImpactNotion()
+	rest, ok := o.CalAskCumNotional()
+	if !ok {
+		return false
+	}
+	micro, ok := o.GetAskMicro(o.fromLevel)
+	if !ok {
+		return false
+	}
+	if impact.GreaterThanOrEqual(rest) && micro.Trend == "cut" {
+		return true
+	}
+	return false
+}
+
 func LocalOrderBook(symbol string, logger *log.Logger) *OrderBookBranch {
 	var o OrderBookBranch
 	o.SetLookBackSec(5) // default 5 sec
+	o.SetImpactCumRange(20)
 	ctx, cancel := context.WithCancel(context.Background())
 	o.Cancel = &cancel
 	bookticker := make(chan map[string]interface{}, 50)
