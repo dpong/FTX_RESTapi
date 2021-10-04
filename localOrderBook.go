@@ -545,6 +545,9 @@ func (o *OrderBookBranch) CheckCheckSum(checkSum uint32) error {
 	o.Asks.mux.RLock()
 	defer o.Bids.mux.RUnlock()
 	defer o.Asks.mux.RUnlock()
+	if len(o.Bids.Book) == 0 || len(o.Asks.Book) == 0 {
+		return nil
+	}
 	for i := 0; i < 100; i++ {
 		buffer.WriteString(o.Bids.Book[i][0])
 		buffer.WriteString(":")
@@ -771,19 +774,19 @@ func HandleFTXWebsocket(res *map[string]interface{}, mainCh *chan map[string]int
 	case "subscribed":
 		Channel := (*res)["channel"].(string)
 		var buffer bytes.Buffer
-		buffer.WriteString("訂閱 | 頻道: ")
+		buffer.WriteString("Subscribed | Channel: ")
 		buffer.WriteString(Channel)
 		if Channel == "ticker" {
 			Market := (*res)["market"].(string)
 			buffer.WriteString(" | ")
-			buffer.WriteString("商品: ")
+			buffer.WriteString("Product: ")
 			buffer.WriteString(Market)
 		}
 		log.Println(buffer.String())
 	case "info":
 		Code := (*res)["code"].(float64)
 		if Code == 20001 {
-			err := errors.New("伺服器重啓，代碼 20001。")
+			err := errors.New("Server Restarted，Code 20001。")
 			return err
 		}
 	case "partial":
