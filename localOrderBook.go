@@ -122,8 +122,14 @@ func (o *OrderBookBranch) DealWithBidPriceLevel(price, qty decimal.Decimal) {
 		case price.Equal(bookPrice):
 			if qty.IsZero() {
 				// delete level
-				o.Bids.Book = append(o.Bids.Book[:level], o.Bids.Book[level+1:]...)
-				o.Bids.Micro = append(o.Bids.Micro[:level], o.Bids.Micro[level+1:]...)
+				switch {
+				case level == l-1:
+					o.Bids.Book = o.Bids.Book[:l-1]
+					o.Bids.Micro = o.Bids.Micro[:l-1]
+				default:
+					o.Bids.Book = append(o.Bids.Book[:level], o.Bids.Book[level+1:]...)
+					o.Bids.Micro = append(o.Bids.Micro[:level], o.Bids.Micro[level+1:]...)
+				}
 				return
 			}
 			fqty, _ := qty.Float64()
@@ -190,8 +196,14 @@ func (o *OrderBookBranch) DealWithAskPriceLevel(price, qty decimal.Decimal) {
 		case price.Equal(bookPrice):
 			if qty.IsZero() {
 				// delete level
-				o.Asks.Book = append(o.Asks.Book[:level], o.Asks.Book[level+1:]...)
-				o.Asks.Micro = append(o.Asks.Micro[:level], o.Asks.Micro[level+1:]...)
+				switch {
+				case level == l-1:
+					o.Asks.Book = o.Asks.Book[:l-1]
+					o.Asks.Micro = o.Asks.Micro[:l-1]
+				default:
+					o.Asks.Book = append(o.Asks.Book[:level], o.Asks.Book[level+1:]...)
+					o.Asks.Micro = append(o.Asks.Micro[:level], o.Asks.Micro[level+1:]...)
+				}
 				return
 			}
 			fqty, _ := qty.Float64()
