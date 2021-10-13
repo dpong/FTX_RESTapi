@@ -63,23 +63,31 @@ type ResponseByCancelOrder struct {
 	Result  string `json:"result"`
 }
 
-func (p *Client) CancelAll() (err error) {
-	//reader := bytes.NewBuffer(bytesData)
-	_, err = p.sendRequest(
+type OnlySymbolOpt struct {
+	Symbol string `json:"market,omitempty"`
+}
+
+func (p *Client) CancelAllOrders(symbol string) (result *ResponseByCancelOrder, err error) {
+	var opt OnlySymbolOpt
+	if symbol != "" {
+		opt.Symbol = symbol
+	}
+	body, err := json.Marshal(&opt)
+	if err != nil {
+		return nil, err
+	}
+	res, err := p.sendRequest(
 		http.MethodDelete,
 		"/orders",
-		nil, nil)
+		body, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	// in Close()
-	//err = decode(res, &status)
-	//if err != nil {
-	//	p.Logger.Println(err)
-	//	return nil
-	//}
-	//return status
-	return nil
+	err = decode(res, &result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (p *Client) CancelByID(oid int) (status *ResponseByCancelOrder, err error) {
@@ -133,4 +141,43 @@ func (p *Client) GetOrderStatus(oid int) (status *ResponseByOrderStatus, err err
 		return nil, err
 	}
 	return status, nil
+}
+
+type GetOpenOrdersResponse struct {
+	Success bool `json:"success"`
+	Result  []struct {
+		Createdat     time.Time   `json:"createdAt"`
+		Filledsize    float64     `json:"filledSize"`
+		Future        string      `json:"future"`
+		ID            int         `json:"id"`
+		Market        string      `json:"market"`
+		Price         float64     `json:"price"`
+		Avgfillprice  float64     `json:"avgFillPrice"`
+		Remainingsize float64     `json:"remainingSize"`
+		Side          string      `json:"side"`
+		Size          float64     `json:"size"`
+		Status        string      `json:"status"`
+		Type          string      `json:"type"`
+		Reduceonly    bool        `json:"reduceOnly"`
+		Ioc           bool        `json:"ioc"`
+		Postonly      bool        `json:"postOnly"`
+		Clientid      interface{} `json:"clientId,omitempty"`
+	} `json:"result"`
+}
+
+func (p *Client) GetOpenOrders(symbol string) (result *GetOpenOrdersResponse, err error) {
+	params := make(map[string]string)
+	params["market"] = symbol
+	res, err := p.sendRequest(
+		http.MethodGet,
+		"/orders",
+		nil, &params)
+	if err != nil {
+		return nil, err
+	}
+	err = decode(res, &result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
