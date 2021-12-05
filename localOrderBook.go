@@ -401,8 +401,9 @@ func LocalOrderBook(symbol string, logger *log.Logger) *OrderBookBranch {
 	ctx, cancel := context.WithCancel(context.Background())
 	o.Cancel = &cancel
 	bookticker := make(chan map[string]interface{}, 50)
-	errCh := make(chan error, 5)
-	refreshCh := make(chan string, 5)
+	errCh := make(chan error, 1)
+	refreshCh := make(chan string, 1)
+	orderBookErr := make(chan error, 1)
 	symbol = strings.ToUpper(symbol)
 	go func() {
 		for {
@@ -410,11 +411,15 @@ func LocalOrderBook(symbol string, logger *log.Logger) *OrderBookBranch {
 			case <-ctx.Done():
 				return
 			default:
-				if err := FTXOrderBookSocket(ctx, symbol, logger, &bookticker, &errCh, &refreshCh); err == nil {
+				if err := FTXOrderBookSocket(ctx, symbol, logger, &bookticker, &errCh, &refreshCh, &orderBookErr); err == nil {
 					return
+				} else {
+					if !strings.Contains(err.Error(), "reconnect because of time out") {
+						errCh <- errors.New("Reconnect websocket")
+					}
+					logger.Warningf("Reconnect %s websocket stream.\n", symbol)
+					time.Sleep(time.Second)
 				}
-				errCh <- errors.New("Reconnect websocket")
-				time.Sleep(time.Second)
 			}
 		}
 	}()
@@ -424,7 +429,7 @@ func LocalOrderBook(symbol string, logger *log.Logger) *OrderBookBranch {
 			case <-ctx.Done():
 				return
 			default:
-				o.MaintainOrderBook(ctx, symbol, &bookticker, &errCh, &refreshCh)
+				o.MaintainOrderBook(ctx, symbol, &bookticker, &errCh, &refreshCh, &orderBookErr)
 				logger.Warningf("Refreshing %s local orderbook.\n", symbol)
 				time.Sleep(time.Second)
 			}
@@ -439,8 +444,10 @@ func (o *OrderBookBranch) MaintainOrderBook(
 	bookticker *chan map[string]interface{},
 	errCh *chan error,
 	refreshCh *chan string,
+	reCh *chan error,
 ) {
 	o.SnapShoted = false
+	lastUpdate := time.Now()
 
 	for {
 		select {
@@ -448,33 +455,42 @@ func (o *OrderBookBranch) MaintainOrderBook(
 			return
 		case <-(*errCh):
 			return
-		default:
-			message := <-(*bookticker)
+		case message := <-(*bookticker):
 			channel, ok := message["channel"].(string)
 			if !ok {
 				continue
 			}
 			switch channel {
 			case "orderbook":
-				o.ChannelOrderBook(&message, refreshCh)
+				if err := o.ChannelOrderBook(&message, refreshCh); err == nil {
+					lastUpdate = time.Now()
+				}
 			case "trades":
 				o.ChannelTrades(&message)
 			}
+		default:
+			if time.Now().After(lastUpdate.Add(time.Second * 10)) {
+				// 10 sec without updating
+				err := errors.New("reconnect because of time out")
+				(*reCh) <- err
+				return
+			}
+			time.Sleep(time.Millisecond * 100)
 		}
 	}
 }
 
-func (o *OrderBookBranch) ChannelOrderBook(message *map[string]interface{}, refreshCh *chan string) {
+func (o *OrderBookBranch) ChannelOrderBook(message *map[string]interface{}, refreshCh *chan string) error {
 	data, ok := (*message)["data"].(map[string]interface{})
 	if !ok {
-		return
+		return errors.New("data is not ok")
 	}
 	if len(data) == 0 {
-		return
+		return errors.New("data len is 0")
 	}
 	action, ok := data["action"].(string)
 	if !ok {
-		return
+		return errors.New("data action is not ok")
 	}
 	switch action {
 	case "partial":
@@ -485,9 +501,10 @@ func (o *OrderBookBranch) ChannelOrderBook(message *map[string]interface{}, refr
 		if err := o.CheckCheckSum(checkSum); err != nil {
 			// restart local orderbook
 			*refreshCh <- "refresh"
-			return
+			return err
 		}
 	}
+	return nil
 }
 
 func (o *OrderBookBranch) ChannelTrades(message *map[string]interface{}) {
@@ -692,6 +709,7 @@ func FTXOrderBookSocket(
 	mainCh *chan map[string]interface{},
 	errCh *chan error,
 	refreshCh *chan string,
+	reCh *chan error,
 ) error {
 	var w FTXWesocket
 	var duration time.Duration = 30
@@ -730,6 +748,8 @@ func FTXOrderBookSocket(
 			return nil
 		case <-*refreshCh:
 			return errors.New("refresh")
+		case err := <-(*reCh):
+			return err
 		default:
 			if conn == nil {
 				d := w.OutFTXErr()
