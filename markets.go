@@ -21,6 +21,7 @@ type Market struct {
 		PriceIncrement float64 `json:"priceIncrement"`
 		SizeIncrement  float64 `json:"sizeIncrement"`
 		Restricted     bool    `json:"restricted"`
+		MinProvideSize float64 `json:"minProvideSize"`
 	} `json:"result"`
 }
 
