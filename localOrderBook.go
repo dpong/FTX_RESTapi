@@ -5,10 +5,12 @@ import (
 	"context"
 	"errors"
 	"hash/crc32"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/gorilla/websocket"
 	"github.com/shopspring/decimal"
@@ -394,7 +396,7 @@ func (o *OrderBookBranch) IsBigImpactOnAsk() bool {
 	return false
 }
 
-func LocalOrderBook(symbol string, logger *log.Logger) *OrderBookBranch {
+func LocalOrderBook(symbol string, logger *log.Logger, streamTrade bool) *OrderBookBranch {
 	var o OrderBookBranch
 	o.SetLookBackSec(5) // default 5 sec
 	o.SetImpactCumRange(20)
@@ -411,7 +413,7 @@ func LocalOrderBook(symbol string, logger *log.Logger) *OrderBookBranch {
 			case <-ctx.Done():
 				return
 			default:
-				if err := FTXOrderBookSocket(ctx, symbol, logger, &bookticker, &errCh, &refreshCh, &orderBookErr); err == nil {
+				if err := FTXOrderBookSocket(ctx, symbol, logger, &bookticker, &errCh, &refreshCh, &orderBookErr, streamTrade); err == nil {
 					return
 				} else {
 					if !strings.Contains(err.Error(), "reconnect because of time out") {
@@ -568,8 +570,17 @@ func (o *OrderBookBranch) ChannelTrades(message *map[string]interface{}) {
 	wg.Wait()
 }
 
+func String2Bytes(s string) []byte {
+	sh := (*reflect.StringHeader)(unsafe.Pointer(&s))
+	bh := reflect.SliceHeader{
+		Data: sh.Data,
+		Len:  sh.Len,
+		Cap:  sh.Len,
+	}
+	return *(*[]byte)(unsafe.Pointer(&bh))
+}
+
 func (o *OrderBookBranch) CheckCheckSum(checkSum uint32) error {
-	var buffer bytes.Buffer
 	o.Bids.mux.RLock()
 	o.Asks.mux.RLock()
 	defer o.Bids.mux.RUnlock()
@@ -577,19 +588,13 @@ func (o *OrderBookBranch) CheckCheckSum(checkSum uint32) error {
 	if len(o.Bids.Book) == 0 || len(o.Asks.Book) == 0 {
 		return nil
 	}
+	var list []string
 	for i := 0; i < 100; i++ {
-		buffer.WriteString(o.Bids.Book[i][0])
-		buffer.WriteString(":")
-		buffer.WriteString(o.Bids.Book[i][1])
-		buffer.WriteString(":")
-		buffer.WriteString(o.Asks.Book[i][0])
-		buffer.WriteString(":")
-		buffer.WriteString(o.Asks.Book[i][1])
-		if i != 99 {
-			buffer.WriteString(":")
-		}
+		list = append(list, o.Bids.Book[i][:2]...)
+		list = append(list, o.Asks.Book[i][:2]...)
 	}
-	localCheckSum := crc32.ChecksumIEEE(buffer.Bytes())
+	result := strings.Join(list, ":")
+	localCheckSum := crc32.ChecksumIEEE(String2Bytes(result))
 	if localCheckSum != checkSum {
 		return errors.New("checkSum error")
 	}
@@ -710,9 +715,10 @@ func FTXOrderBookSocket(
 	errCh *chan error,
 	refreshCh *chan string,
 	reCh *chan error,
+	streamTrade bool,
 ) error {
 	var w FTXWesocket
-	var duration time.Duration = 30
+	var duration time.Duration = 300
 	w.Logger = logger
 	w.OnErr = false
 	symbol = strings.ToUpper(symbol)
@@ -732,12 +738,14 @@ func FTXOrderBookSocket(
 	if err := w.Conn.WriteMessage(websocket.TextMessage, send); err != nil {
 		return err
 	}
-	send, err = GetFTXTradesSubscribeMessage(symbol)
-	if err != nil {
-		return err
-	}
-	if err := w.Conn.WriteMessage(websocket.TextMessage, send); err != nil {
-		return err
+	if streamTrade {
+		send, err = GetFTXTradesSubscribeMessage(symbol)
+		if err != nil {
+			return err
+		}
+		if err := w.Conn.WriteMessage(websocket.TextMessage, send); err != nil {
+			return err
+		}
 	}
 	if err := w.Conn.SetReadDeadline(time.Now().Add(time.Second * duration)); err != nil {
 		return err
