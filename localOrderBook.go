@@ -20,15 +20,22 @@ import (
 const timeLayout = "2006-01-02T15:04:05.999999+00:00"
 
 type OrderBookBranch struct {
-	Bids       BookBranch
-	Asks       BookBranch
-	SnapShoted bool
-	Cancel     *context.CancelFunc
-	BuyTrade   TradeImpact
-	SellTrade  TradeImpact
-	LookBack   time.Duration
-	fromLevel  int
-	toLevel    int
+	Bids        BookBranch
+	Asks        BookBranch
+	SnapShoted  bool
+	Cancel      *context.CancelFunc
+	BuyTrade    TradeImpact
+	SellTrade   TradeImpact
+	LookBack    time.Duration
+	fromLevel   int
+	toLevel     int
+	reCh        chan error
+	lastRefresh lastRefreshBranch
+}
+
+type lastRefreshBranch struct {
+	mux  sync.RWMutex
+	time time.Time
 }
 
 type TradeImpact struct {
@@ -47,6 +54,17 @@ type BookBranch struct {
 type BookMicro struct {
 	OrderNum int
 	Trend    string
+}
+
+func (o *OrderBookBranch) IfCanRefresh() bool {
+	o.lastRefresh.mux.Lock()
+	defer o.lastRefresh.mux.Unlock()
+	now := time.Now()
+	if now.After(o.lastRefresh.time.Add(time.Second * 3)) {
+		o.lastRefresh.time = now
+		return true
+	}
+	return false
 }
 
 func (o *OrderBookBranch) UpdateNewComing(message *map[string]interface{}) {
@@ -229,6 +247,12 @@ func (o *OrderBookBranch) DealWithAskPriceLevel(price, qty decimal.Decimal) {
 	}
 }
 
+func (o *OrderBookBranch) RefreshLocalOrderBook(err error) {
+	if o.IfCanRefresh() {
+		o.reCh <- err
+	}
+}
+
 func (o *OrderBookBranch) Close() {
 	(*o.Cancel)()
 	o.SnapShoted = true
@@ -254,7 +278,13 @@ func (o *OrderBookBranch) SetImpactCumRange(toLevel int) {
 func (o *OrderBookBranch) GetBids() ([][]string, bool) {
 	o.Bids.mux.RLock()
 	defer o.Bids.mux.RUnlock()
-	if len(o.Bids.Book) == 0 || !o.SnapShoted {
+	if !o.SnapShoted {
+		return [][]string{}, false
+	}
+	if len(o.Bids.Book) == 0 {
+		if o.IfCanRefresh() {
+			o.reCh <- errors.New("re cause len bid is zero")
+		}
 		return [][]string{}, false
 	}
 	book := o.Bids.Book
@@ -275,7 +305,13 @@ func (o *OrderBookBranch) GetBidMicro(idx int) (*BookMicro, bool) {
 func (o *OrderBookBranch) GetAsks() ([][]string, bool) {
 	o.Asks.mux.RLock()
 	defer o.Asks.mux.RUnlock()
-	if len(o.Asks.Book) == 0 || !o.SnapShoted {
+	if !o.SnapShoted {
+		return [][]string{}, false
+	}
+	if len(o.Asks.Book) == 0 {
+		if o.IfCanRefresh() {
+			o.reCh <- errors.New("re cause len ask is zero")
+		}
 		return [][]string{}, false
 	}
 	book := o.Asks.Book
@@ -396,6 +432,16 @@ func (o *OrderBookBranch) IsBigImpactOnAsk() bool {
 	return false
 }
 
+func ReStartMainSeesionErrHub(err string) bool {
+	switch {
+	case strings.Contains(err, "reconnect because of time out"):
+		return false
+	case strings.Contains(err, "reconnect because of reCh send"):
+		return false
+	}
+	return true
+}
+
 func LocalOrderBook(symbol string, logger *log.Logger, streamTrade bool) *OrderBookBranch {
 	var o OrderBookBranch
 	o.SetLookBackSec(5) // default 5 sec
@@ -406,6 +452,7 @@ func LocalOrderBook(symbol string, logger *log.Logger, streamTrade bool) *OrderB
 	errCh := make(chan error, 1)
 	refreshCh := make(chan string, 1)
 	orderBookErr := make(chan error, 1)
+	o.reCh = make(chan error, 5)
 	symbol = strings.ToUpper(symbol)
 	go func() {
 		for {
@@ -416,11 +463,10 @@ func LocalOrderBook(symbol string, logger *log.Logger, streamTrade bool) *OrderB
 				if err := FTXOrderBookSocket(ctx, symbol, logger, &bookticker, &errCh, &refreshCh, &orderBookErr, streamTrade); err == nil {
 					return
 				} else {
-					if !strings.Contains(err.Error(), "reconnect because of time out") {
+					if ReStartMainSeesionErrHub(err.Error()) {
 						errCh <- errors.New("Reconnect websocket")
 					}
 					logger.Warningf("Reconnect %s websocket stream.\n", symbol)
-					time.Sleep(time.Second)
 				}
 			}
 		}
@@ -431,9 +477,11 @@ func LocalOrderBook(symbol string, logger *log.Logger, streamTrade bool) *OrderB
 			case <-ctx.Done():
 				return
 			default:
-				o.MaintainOrderBook(ctx, symbol, &bookticker, &errCh, &refreshCh, &orderBookErr)
-				logger.Warningf("Refreshing %s local orderbook.\n", symbol)
-				time.Sleep(time.Second)
+				err := o.MaintainOrderBook(ctx, symbol, &bookticker, &errCh, &refreshCh, &orderBookErr)
+				if err == nil {
+					return
+				}
+				logger.Warningf("Refreshing %s local orderbook cause: %s\n", symbol, err.Error())
 			}
 		}
 	}()
@@ -447,16 +495,20 @@ func (o *OrderBookBranch) MaintainOrderBook(
 	errCh *chan error,
 	refreshCh *chan string,
 	reCh *chan error,
-) {
+) error {
 	o.SnapShoted = false
 	lastUpdate := time.Now()
 
 	for {
 		select {
 		case <-ctx.Done():
-			return
-		case <-(*errCh):
-			return
+			return nil
+		case err := <-(*errCh):
+			return err
+		case err := <-o.reCh:
+			errSend := errors.New("reconnect because of time out")
+			(*reCh) <- errSend
+			return err
 		case message := <-(*bookticker):
 			channel, ok := message["channel"].(string)
 			if !ok {
@@ -475,7 +527,7 @@ func (o *OrderBookBranch) MaintainOrderBook(
 				// 10 sec without updating
 				err := errors.New("reconnect because of time out")
 				(*reCh) <- err
-				return
+				return err
 			}
 			time.Sleep(time.Millisecond * 100)
 		}
