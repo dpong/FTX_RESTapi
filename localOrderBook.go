@@ -802,6 +802,8 @@ func FTXOrderBookSocket(
 	if err := w.Conn.SetReadDeadline(time.Now().Add(time.Second * duration)); err != nil {
 		return err
 	}
+	read := time.NewTicker(time.Millisecond * 50)
+	defer read.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -810,7 +812,7 @@ func FTXOrderBookSocket(
 			return errors.New("refresh")
 		case err := <-(*reCh):
 			return err
-		default:
+		case <-read.C:
 			if conn == nil {
 				d := w.OutFTXErr()
 				*mainCh <- d
@@ -846,6 +848,8 @@ func FTXOrderBookSocket(
 			if err := w.Conn.SetReadDeadline(time.Now().Add(time.Second * duration)); err != nil {
 				return err
 			}
+		default:
+			time.Sleep(time.Millisecond * 10)
 		}
 	}
 }
