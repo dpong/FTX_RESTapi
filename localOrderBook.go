@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"hash/crc32"
 	"reflect"
 	"strconv"
