@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"hash/crc32"
 	"reflect"
 	"strconv"
@@ -247,10 +248,14 @@ func (o *OrderBookBranch) DealWithAskPriceLevel(price, qty decimal.Decimal) {
 	}
 }
 
-func (o *OrderBookBranch) RefreshLocalOrderBook(err error) {
+func (o *OrderBookBranch) RefreshLocalOrderBook(err error) error {
 	if o.IfCanRefresh() {
+		if len(o.reCh) == cap(o.reCh) {
+			return errors.New("refresh channel is full, please check it up")
+		}
 		o.reCh <- err
 	}
+	return nil
 }
 
 func (o *OrderBookBranch) Close() {
