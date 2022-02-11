@@ -502,7 +502,6 @@ func (o *OrderBookBranch) MaintainOrderBook(
 ) error {
 	o.SnapShoted = false
 	lastUpdate := time.Now()
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -510,7 +509,7 @@ func (o *OrderBookBranch) MaintainOrderBook(
 		case err := <-(*errCh):
 			return err
 		case err := <-o.reCh:
-			errSend := errors.New("reconnect because of time out")
+			errSend := errors.New("reconnect because of reCh send")
 			(*reCh) <- errSend
 			return err
 		case message := <-(*bookticker):
@@ -520,7 +519,7 @@ func (o *OrderBookBranch) MaintainOrderBook(
 			}
 			switch channel {
 			case "orderbook":
-				if err := o.ChannelOrderBook(&message, reCh); err == nil {
+				if err := o.ChannelOrderBook(&message); err == nil {
 					lastUpdate = time.Now()
 				} else {
 					errSend := errors.New("reconnect because of ChannelOrderBook error")
@@ -542,7 +541,7 @@ func (o *OrderBookBranch) MaintainOrderBook(
 	}
 }
 
-func (o *OrderBookBranch) ChannelOrderBook(message *map[string]interface{}, refreshCh *chan error) error {
+func (o *OrderBookBranch) ChannelOrderBook(message *map[string]interface{}) error {
 	data, ok := (*message)["data"].(map[string]interface{})
 	if !ok {
 		return errors.New("data is not ok")
@@ -555,12 +554,10 @@ func (o *OrderBookBranch) ChannelOrderBook(message *map[string]interface{}, refr
 		return errors.New("data action is not ok")
 	}
 	if st, ok := data["time"].(float64); !ok {
-		*refreshCh <- errors.New("refresh from ChannelOrderBook")
 		return errors.New("get nil when getting event time")
 	} else {
 		stamp := time.Unix(int64(st), 0)
 		if time.Now().After(stamp.Add(time.Second * 5)) {
-			*refreshCh <- errors.New("refresh from ChannelOrderBook")
 			return errors.New("websocket data delay more than 5 sec")
 		}
 	}
@@ -571,8 +568,6 @@ func (o *OrderBookBranch) ChannelOrderBook(message *map[string]interface{}, refr
 		o.UpdateNewComing(&data)
 		checkSum := uint32((*&data)["checksum"].(float64))
 		if err := o.CheckCheckSum(checkSum); err != nil {
-			// restart local orderbook
-			*refreshCh <- errors.New("refresh from ChannelOrderBook")
 			return err
 		}
 	}
@@ -818,8 +813,6 @@ func FTXOrderBookSocket(
 	if err := w.Conn.SetReadDeadline(time.Now().Add(time.Second * duration)); err != nil {
 		return err
 	}
-	read := time.NewTicker(time.Millisecond * 50)
-	defer read.Stop()
 	for {
 		select {
 		case <-ctx.Done():
