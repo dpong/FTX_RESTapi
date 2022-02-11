@@ -442,6 +442,8 @@ func ReStartMainSeesionErrHub(err string) bool {
 		return false
 	case strings.Contains(err, "reconnect because of reCh send"):
 		return false
+	case strings.Contains(err, "reconnect because of ChannelOrderBook error"):
+		return false
 	}
 	return true
 }
@@ -454,8 +456,7 @@ func LocalOrderBook(symbol string, logger *log.Logger, streamTrade bool) *OrderB
 	o.Cancel = &cancel
 	bookticker := make(chan map[string]interface{}, 50)
 	errCh := make(chan error, 1)
-	refreshCh := make(chan string, 1)
-	orderBookErr := make(chan error, 1)
+	refreshCh := make(chan error, 1)
 	o.reCh = make(chan error, 5)
 	symbol = strings.ToUpper(symbol)
 	go func() {
@@ -464,7 +465,7 @@ func LocalOrderBook(symbol string, logger *log.Logger, streamTrade bool) *OrderB
 			case <-ctx.Done():
 				return
 			default:
-				if err := FTXOrderBookSocket(ctx, symbol, logger, &bookticker, &errCh, &refreshCh, &orderBookErr, streamTrade); err == nil {
+				if err := FTXOrderBookSocket(ctx, symbol, logger, &bookticker, &refreshCh, streamTrade); err == nil {
 					return
 				} else {
 					if ReStartMainSeesionErrHub(err.Error()) {
@@ -481,7 +482,7 @@ func LocalOrderBook(symbol string, logger *log.Logger, streamTrade bool) *OrderB
 			case <-ctx.Done():
 				return
 			default:
-				err := o.MaintainOrderBook(ctx, symbol, &bookticker, &errCh, &refreshCh, &orderBookErr)
+				err := o.MaintainOrderBook(ctx, symbol, &bookticker, &errCh, &refreshCh)
 				if err == nil {
 					return
 				}
@@ -497,7 +498,6 @@ func (o *OrderBookBranch) MaintainOrderBook(
 	symbol string,
 	bookticker *chan map[string]interface{},
 	errCh *chan error,
-	refreshCh *chan string,
 	reCh *chan error,
 ) error {
 	o.SnapShoted = false
@@ -520,8 +520,12 @@ func (o *OrderBookBranch) MaintainOrderBook(
 			}
 			switch channel {
 			case "orderbook":
-				if err := o.ChannelOrderBook(&message, refreshCh); err == nil {
+				if err := o.ChannelOrderBook(&message, reCh); err == nil {
 					lastUpdate = time.Now()
+				} else {
+					errSend := errors.New("reconnect because of ChannelOrderBook error")
+					(*reCh) <- errSend
+					return err
 				}
 			case "trades":
 				o.ChannelTrades(&message)
@@ -538,7 +542,7 @@ func (o *OrderBookBranch) MaintainOrderBook(
 	}
 }
 
-func (o *OrderBookBranch) ChannelOrderBook(message *map[string]interface{}, refreshCh *chan string) error {
+func (o *OrderBookBranch) ChannelOrderBook(message *map[string]interface{}, refreshCh *chan error) error {
 	data, ok := (*message)["data"].(map[string]interface{})
 	if !ok {
 		return errors.New("data is not ok")
@@ -550,6 +554,16 @@ func (o *OrderBookBranch) ChannelOrderBook(message *map[string]interface{}, refr
 	if !ok {
 		return errors.New("data action is not ok")
 	}
+	if st, ok := data["time"].(float64); !ok {
+		*refreshCh <- errors.New("refresh from ChannelOrderBook")
+		return errors.New("get nil when getting event time")
+	} else {
+		stamp := time.Unix(int64(st), 0)
+		if time.Now().After(stamp.Add(time.Second * 5)) {
+			*refreshCh <- errors.New("refresh from ChannelOrderBook")
+			return errors.New("websocket data delay more than 5 sec")
+		}
+	}
 	switch action {
 	case "partial":
 		o.InitialOrderBook(&data)
@@ -558,7 +572,7 @@ func (o *OrderBookBranch) ChannelOrderBook(message *map[string]interface{}, refr
 		checkSum := uint32((*&data)["checksum"].(float64))
 		if err := o.CheckCheckSum(checkSum); err != nil {
 			// restart local orderbook
-			*refreshCh <- "refresh"
+			*refreshCh <- errors.New("refresh from ChannelOrderBook")
 			return err
 		}
 	}
@@ -768,8 +782,6 @@ func FTXOrderBookSocket(
 	symbol string,
 	logger *log.Logger,
 	mainCh *chan map[string]interface{},
-	errCh *chan error,
-	refreshCh *chan string,
 	reCh *chan error,
 	streamTrade bool,
 ) error {
@@ -812,11 +824,9 @@ func FTXOrderBookSocket(
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-*refreshCh:
-			return errors.New("refresh")
 		case err := <-(*reCh):
 			return err
-		case <-read.C:
+		default:
 			if conn == nil {
 				d := w.OutFTXErr()
 				*mainCh <- d
@@ -852,8 +862,6 @@ func FTXOrderBookSocket(
 			if err := w.Conn.SetReadDeadline(time.Now().Add(time.Second * duration)); err != nil {
 				return err
 			}
-		default:
-			time.Sleep(time.Millisecond * 10)
 		}
 	}
 }
@@ -886,7 +894,7 @@ func HandleFTXWebsocket(res *map[string]interface{}, mainCh *chan map[string]int
 	case "info":
 		Code := (*res)["code"].(float64)
 		if Code == 20001 {
-			err := errors.New("Server Restarted，Code 20001。")
+			err := errors.New("Server Restarted, Code 20001。")
 			return err
 		}
 	case "partial":
