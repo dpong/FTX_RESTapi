@@ -656,10 +656,16 @@ func (o *OrderBookBranch) CheckCheckSum(checkSum uint32) error {
 	if len(o.Bids.Book) == 0 || len(o.Asks.Book) == 0 {
 		return nil
 	}
+	bidLen := len(o.Bids.Book)
+	askLen := len(o.Asks.Book)
 	var list []string
 	for i := 0; i < 100; i++ {
-		list = append(list, o.Bids.Book[i][:2]...)
-		list = append(list, o.Asks.Book[i][:2]...)
+		if i < bidLen {
+			list = append(list, o.Bids.Book[i][:2]...)
+		}
+		if i < askLen {
+			list = append(list, o.Asks.Book[i][:2]...)
+		}
 	}
 	result := strings.Join(list, ":")
 	localCheckSum := crc32.ChecksumIEEE(String2Bytes(result))
