@@ -566,9 +566,12 @@ func (o *OrderBookBranch) ChannelOrderBook(message *map[string]interface{}) erro
 		o.InitialOrderBook(&data)
 	case "update":
 		o.UpdateNewComing(&data)
-		checkSum := uint32((*&data)["checksum"].(float64))
-		if err := o.CheckCheckSum(checkSum); err != nil {
-			return err
+		if checkSumf, ok := (*&data)["checksum"].(float64); !ok {
+			return errors.New("did't get checksum after updateNewComing")
+		} else {
+			if err := o.CheckCheckSum(uint32(checkSumf)); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
