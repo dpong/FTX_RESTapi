@@ -1,41 +1,43 @@
 package api
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 )
 
 type RequestForOrder struct {
-	Market     string      `json:"market"`
-	Side       string      `json:"side"`
-	Price      float64     `json:"price"`
-	Type       string      `json:"type"`
-	Size       float64     `json:"size"`
-	ReduceOnly bool        `json:"reduceOnly,omitempty"` //沒有該選項的話會自動忽略
-	Ioc        bool        `json:"ioc,omitempty"`
-	PostOnly   bool        `json:"postOnly,omitempty"`
-	ClientID   interface{} `json:"clientId,omitempty"`
+	Market     string  `json:"market"`
+	Side       string  `json:"side"`
+	Price      float64 `json:"price"`
+	Type       string  `json:"type"`
+	Size       float64 `json:"size"`
+	ReduceOnly bool    `json:"reduceOnly,omitempty"` //沒有該選項的話會自動忽略
+	Ioc        bool    `json:"ioc,omitempty"`
+	PostOnly   bool    `json:"postOnly,omitempty"`
+	ClientID   string  `json:"clientId,omitempty"`
 }
 
 type ResponseByOrder struct {
 	Success bool `json:"success"`
 	Result  struct {
-		CreatedAt     time.Time   `json:"createdAt"`
-		FilledSize    float64     `json:"filledSize"`
-		Future        string      `json:"future"`
-		ID            int         `json:"id"`
-		Market        string      `json:"market"`
-		Price         float64     `json:"price"`
-		RemainingSize float64     `json:"remainingSize"`
-		Side          string      `json:"side"`
-		Size          float64     `json:"size"`
-		Status        string      `json:"status"`
-		Type          string      `json:"type"`
-		ReduceOnly    bool        `json:"reduceOnly"`
-		Ioc           bool        `json:"ioc"`
-		PostOnly      bool        `json:"postOnly"`
-		ClientID      interface{} `json:"clientId"`
+		CreatedAt     time.Time `json:"createdAt"`
+		FilledSize    float64   `json:"filledSize"`
+		Future        string    `json:"future"`
+		ID            int       `json:"id"`
+		Market        string    `json:"market"`
+		Price         float64   `json:"price"`
+		RemainingSize float64   `json:"remainingSize"`
+		Side          string    `json:"side"`
+		Size          float64   `json:"size"`
+		Status        string    `json:"status"`
+		Type          string    `json:"type"`
+		ReduceOnly    bool      `json:"reduceOnly"`
+		Ioc           bool      `json:"ioc"`
+		PostOnly      bool      `json:"postOnly"`
+		ClientID      string    `json:"clientId"`
 	} `json:"result"`
 }
 
@@ -108,22 +110,22 @@ func (p *Client) CancelByID(oid int) (status *ResponseByCancelOrder, err error) 
 type ResponseByOrderStatus struct {
 	Success bool `json:"success"`
 	Result  struct {
-		CreatedAt     string      `json:"createdAt"`
-		FilledSize    float64     `json:"filledSize"`
-		Future        string      `json:"future"`
-		ID            int         `json:"id"`
-		Market        string      `json:"market"`
-		Price         float64     `json:"price"`
-		AvgFillPrice  float64     `json:"avgFillPrice"`
-		RemainingSize float64     `json:"remainingSize"`
-		Side          string      `json:"side"`
-		Size          float64     `json:"size"`
-		Status        string      `json:"status"`
-		Type          string      `json:"type"`
-		ReduceOnly    bool        `json:"reduceOnly"`
-		Ioc           bool        `json:"ioc"`
-		PostOnly      bool        `json:"postOnly"`
-		ClientID      interface{} `json:"clientId"`
+		CreatedAt     string  `json:"createdAt"`
+		FilledSize    float64 `json:"filledSize"`
+		Future        string  `json:"future"`
+		ID            int     `json:"id"`
+		Market        string  `json:"market"`
+		Price         float64 `json:"price"`
+		AvgFillPrice  float64 `json:"avgFillPrice"`
+		RemainingSize float64 `json:"remainingSize"`
+		Side          string  `json:"side"`
+		Size          float64 `json:"size"`
+		Status        string  `json:"status"`
+		Type          string  `json:"type"`
+		ReduceOnly    bool    `json:"reduceOnly"`
+		Ioc           bool    `json:"ioc"`
+		PostOnly      bool    `json:"postOnly"`
+		ClientID      string  `json:"clientId"`
 	} `json:"result"`
 }
 
@@ -146,22 +148,22 @@ func (p *Client) GetOrderStatus(oid int) (status *ResponseByOrderStatus, err err
 type GetOpenOrdersResponse struct {
 	Success bool `json:"success"`
 	Result  []struct {
-		Createdat     time.Time   `json:"createdAt"`
-		Filledsize    float64     `json:"filledSize"`
-		Future        string      `json:"future"`
-		ID            int         `json:"id"`
-		Market        string      `json:"market"`
-		Price         float64     `json:"price"`
-		Avgfillprice  float64     `json:"avgFillPrice"`
-		Remainingsize float64     `json:"remainingSize"`
-		Side          string      `json:"side"`
-		Size          float64     `json:"size"`
-		Status        string      `json:"status"`
-		Type          string      `json:"type"`
-		Reduceonly    bool        `json:"reduceOnly"`
-		Ioc           bool        `json:"ioc"`
-		Postonly      bool        `json:"postOnly"`
-		Clientid      interface{} `json:"clientId,omitempty"`
+		Createdat     time.Time `json:"createdAt"`
+		Filledsize    float64   `json:"filledSize"`
+		Future        string    `json:"future"`
+		ID            int       `json:"id"`
+		Market        string    `json:"market"`
+		Price         float64   `json:"price"`
+		Avgfillprice  float64   `json:"avgFillPrice"`
+		Remainingsize float64   `json:"remainingSize"`
+		Side          string    `json:"side"`
+		Size          float64   `json:"size"`
+		Status        string    `json:"status"`
+		Type          string    `json:"type"`
+		Reduceonly    bool      `json:"reduceOnly"`
+		Ioc           bool      `json:"ioc"`
+		Postonly      bool      `json:"postOnly"`
+		Clientid      string    `json:"clientId,omitempty"`
 	} `json:"result"`
 }
 
@@ -180,4 +182,53 @@ func (p *Client) GetOpenOrders(symbol string) (result *GetOpenOrdersResponse, er
 		return nil, err
 	}
 	return result, nil
+}
+
+type RequestForModifyOrder struct {
+	Price float64 `json:"price"`
+	Size  float64 `json:"size"`
+}
+
+type ModifyOrderResponse struct {
+	Success bool `json:"success"`
+	Result  struct {
+		Createdat     time.Time `json:"createdAt"`
+		Filledsize    float64   `json:"filledSize"`
+		Future        string    `json:"future"`
+		ID            int       `json:"id"`
+		Market        string    `json:"market"`
+		Price         float64   `json:"price"`
+		Remainingsize float64   `json:"remainingSize"`
+		Side          string    `json:"side"`
+		Size          float64   `json:"size"`
+		Status        string    `json:"status"`
+		Type          string    `json:"type"`
+		Reduceonly    bool      `json:"reduceOnly"`
+		Ioc           bool      `json:"ioc"`
+		Postonly      bool      `json:"postOnly"`
+		Clientid      string    `json:"clientId"`
+	} `json:"result"`
+}
+
+func (p *Client) ModifyOrder(orderID int, o *RequestForModifyOrder) (order *ModifyOrderResponse, err error) {
+	body, err := json.Marshal(&o)
+	if err != nil {
+		return nil, err
+	}
+	var buffer bytes.Buffer
+	buffer.WriteString("/orders/")
+	buffer.WriteString(strconv.Itoa(orderID))
+	buffer.WriteString("/modify")
+	res, err := p.sendRequest(
+		http.MethodPost,
+		buffer.String(),
+		body, nil)
+	if err != nil {
+		return nil, err
+	}
+	err = decode(res, &order)
+	if err != nil {
+		return nil, err
+	}
+	return order, nil
 }
