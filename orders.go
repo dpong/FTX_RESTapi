@@ -8,13 +8,24 @@ import (
 	"time"
 )
 
-type RequestForOrder struct {
+type RequestForLimitOrder struct {
 	Market     string  `json:"market"`
 	Side       string  `json:"side"`
-	Price      float64 `json:"price,omitempty"`
+	Price      float64 `json:"price"`
 	Type       string  `json:"type"`
 	Size       float64 `json:"size"`
-	ReduceOnly bool    `json:"reduceOnly,omitempty"` //沒有該選項的話會自動忽略
+	ReduceOnly bool    `json:"reduceOnly,omitempty"`
+	Ioc        bool    `json:"ioc,omitempty"`
+	PostOnly   bool    `json:"postOnly,omitempty"`
+	ClientID   string  `json:"clientId,omitempty"`
+}
+
+type RequestForMarketOrder struct {
+	Market     string  `json:"market"`
+	Side       string  `json:"side"`
+	Type       string  `json:"type"`
+	Size       float64 `json:"size"`
+	ReduceOnly bool    `json:"reduceOnly,omitempty"`
 	Ioc        bool    `json:"ioc,omitempty"`
 	PostOnly   bool    `json:"postOnly,omitempty"`
 	ClientID   string  `json:"clientId,omitempty"`
@@ -41,7 +52,26 @@ type ResponseByOrder struct {
 	} `json:"result"`
 }
 
-func (p *Client) PlaceOrder(o *RequestForOrder) (order *ResponseByOrder, err error) {
+func (p *Client) PlaceLimitOrder(o *RequestForLimitOrder) (order *ResponseByOrder, err error) {
+	body, err := json.Marshal(&o)
+	if err != nil {
+		return nil, err
+	}
+	res, err := p.sendRequest(
+		http.MethodPost,
+		"/orders",
+		body, nil)
+	if err != nil {
+		return nil, err
+	}
+	err = decode(res, &order)
+	if err != nil {
+		return nil, err
+	}
+	return order, nil
+}
+
+func (p *Client) PlaceMarketOrder(o *RequestForMarketOrder) (order *ResponseByOrder, err error) {
 	body, err := json.Marshal(&o)
 	if err != nil {
 		return nil, err
