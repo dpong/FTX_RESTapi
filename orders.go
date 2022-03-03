@@ -11,7 +11,7 @@ import (
 type RequestForOrder struct {
 	Market     string  `json:"market"`
 	Side       string  `json:"side"`
-	Price      float64 `json:"price"`
+	Price      float64 `json:"price,omitempty"`
 	Type       string  `json:"type"`
 	Size       float64 `json:"size"`
 	ReduceOnly bool    `json:"reduceOnly,omitempty"` //沒有該選項的話會自動忽略
