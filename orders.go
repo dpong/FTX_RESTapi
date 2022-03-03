@@ -21,14 +21,15 @@ type RequestForLimitOrder struct {
 }
 
 type RequestForMarketOrder struct {
-	Market     string  `json:"market"`
-	Side       string  `json:"side"`
-	Type       string  `json:"type"`
-	Size       float64 `json:"size"`
-	ReduceOnly bool    `json:"reduceOnly,omitempty"`
-	Ioc        bool    `json:"ioc,omitempty"`
-	PostOnly   bool    `json:"postOnly,omitempty"`
-	ClientID   string  `json:"clientId,omitempty"`
+	Market     string      `json:"market"`
+	Side       string      `json:"side"`
+	Type       string      `json:"type"`
+	Size       float64     `json:"size"`
+	Price      interface{} `json:"price"`
+	ReduceOnly bool        `json:"reduceOnly,omitempty"`
+	Ioc        bool        `json:"ioc,omitempty"`
+	PostOnly   bool        `json:"postOnly,omitempty"`
+	ClientID   string      `json:"clientId,omitempty"`
 }
 
 type ResponseByOrder struct {
@@ -72,6 +73,7 @@ func (p *Client) PlaceLimitOrder(o *RequestForLimitOrder) (order *ResponseByOrde
 }
 
 func (p *Client) PlaceMarketOrder(o *RequestForMarketOrder) (order *ResponseByOrder, err error) {
+	o.Price = nil
 	body, err := json.Marshal(&o)
 	if err != nil {
 		return nil, err
