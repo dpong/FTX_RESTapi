@@ -43,7 +43,7 @@ func StreamTicker(symbol string, logger *log.Logger) *StreamTickerBranch {
 				if err := fTXTickerSocket(ctx, symbol, logger, &ticker, &errCh); err == nil {
 					return
 				} else {
-					logger.Warningf("Reconnect %s %s ticker stream with err: %s\n", symbol, err.Error())
+					logger.Warningf("Reconnect %s ticker stream with err: %s\n", symbol, err.Error())
 				}
 			}
 		}
@@ -57,7 +57,7 @@ func StreamTicker(symbol string, logger *log.Logger) *StreamTickerBranch {
 				if err := s.maintainStreamTicker(ctx, symbol, &ticker, &errCh); err == nil {
 					return
 				} else {
-					logger.Warningf("Refreshing %s %s ticker stream with err: %s\n", symbol, err.Error())
+					logger.Warningf("Refreshing %s ticker stream with err: %s\n", symbol, err.Error())
 				}
 			}
 		}
