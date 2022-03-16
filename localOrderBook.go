@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"hash/crc32"
+	"math"
 	"reflect"
 	"strconv"
 	"strings"
@@ -119,7 +120,7 @@ func (o *OrderBookBranch) DealWithBidPriceLevel(price, qty decimal.Decimal) {
 			copy(o.Bids.Micro[level+1:], o.Bids.Micro[level:])
 			fprice, _ := price.Float64()
 			fqty, _ := qty.Float64()
-			o.Bids.Book[level] = []string{FloatHandle(fprice), FloatHandle(fqty)}
+			o.Bids.Book[level] = []string{floatHandle(fprice), floatHandle(fqty)}
 			o.Bids.Micro[level].OrderNum = 1
 			return
 		case price.LessThan(bookPrice):
@@ -131,7 +132,7 @@ func (o *OrderBookBranch) DealWithBidPriceLevel(price, qty decimal.Decimal) {
 				}
 				fprice, _ := price.Float64()
 				fqty, _ := qty.Float64()
-				o.Bids.Book = append(o.Bids.Book, []string{FloatHandle(fprice), FloatHandle(fqty)})
+				o.Bids.Book = append(o.Bids.Book, []string{floatHandle(fprice), floatHandle(fqty)})
 				data := BookMicro{
 					OrderNum: 1,
 				}
@@ -167,7 +168,7 @@ func (o *OrderBookBranch) DealWithBidPriceLevel(price, qty decimal.Decimal) {
 					o.Bids.Micro[level].OrderNum = 1
 				}
 			}
-			o.Bids.Book[level][1] = FloatHandle(fqty)
+			o.Bids.Book[level][1] = floatHandle(fqty)
 			return
 		}
 	}
@@ -193,7 +194,7 @@ func (o *OrderBookBranch) DealWithAskPriceLevel(price, qty decimal.Decimal) {
 			copy(o.Asks.Micro[level+1:], o.Asks.Micro[level:])
 			fprice, _ := price.Float64()
 			fqty, _ := qty.Float64()
-			o.Asks.Book[level] = []string{FloatHandle(fprice), FloatHandle(fqty)}
+			o.Asks.Book[level] = []string{floatHandle(fprice), floatHandle(fqty)}
 			o.Asks.Micro[level].OrderNum = 1
 			return
 		case price.GreaterThan(bookPrice):
@@ -205,7 +206,7 @@ func (o *OrderBookBranch) DealWithAskPriceLevel(price, qty decimal.Decimal) {
 				}
 				fprice, _ := price.Float64()
 				fqty, _ := qty.Float64()
-				o.Asks.Book = append(o.Asks.Book, []string{FloatHandle(fprice), FloatHandle(fqty)})
+				o.Asks.Book = append(o.Asks.Book, []string{floatHandle(fprice), floatHandle(fqty)})
 				data := BookMicro{
 					OrderNum: 1,
 				}
@@ -241,7 +242,7 @@ func (o *OrderBookBranch) DealWithAskPriceLevel(price, qty decimal.Decimal) {
 					o.Asks.Micro[level].OrderNum = 1
 				}
 			}
-			o.Asks.Book[level][1] = FloatHandle(fqty)
+			o.Asks.Book[level][1] = floatHandle(fqty)
 			return
 		}
 	}
@@ -465,7 +466,7 @@ func LocalOrderBook(symbol string, logger *log.Logger, streamTrade bool) *OrderB
 			case <-ctx.Done():
 				return
 			default:
-				if err := FTXOrderBookSocket(ctx, symbol, logger, &bookticker, &refreshCh, streamTrade); err == nil {
+				if err := fTXOrderBookSocket(ctx, symbol, logger, &bookticker, &refreshCh, streamTrade); err == nil {
 					return
 				} else {
 					if ReStartMainSeesionErrHub(err.Error()) {
@@ -482,7 +483,7 @@ func LocalOrderBook(symbol string, logger *log.Logger, streamTrade bool) *OrderB
 			case <-ctx.Done():
 				return
 			default:
-				err := o.MaintainOrderBook(ctx, symbol, &bookticker, &errCh, &refreshCh)
+				err := o.maintainOrderBook(ctx, symbol, &bookticker, &errCh, &refreshCh)
 				if err == nil {
 					return
 				}
@@ -493,7 +494,7 @@ func LocalOrderBook(symbol string, logger *log.Logger, streamTrade bool) *OrderB
 	return &o
 }
 
-func (o *OrderBookBranch) MaintainOrderBook(
+func (o *OrderBookBranch) maintainOrderBook(
 	ctx context.Context,
 	symbol string,
 	bookticker *chan map[string]interface{},
@@ -519,7 +520,7 @@ func (o *OrderBookBranch) MaintainOrderBook(
 			}
 			switch channel {
 			case "orderbook":
-				if err := o.ChannelOrderBook(&message); err == nil {
+				if err := o.channelOrderBook(&message); err == nil {
 					lastUpdate = time.Now()
 				} else {
 					errSend := errors.New("reconnect because of ChannelOrderBook error")
@@ -527,7 +528,7 @@ func (o *OrderBookBranch) MaintainOrderBook(
 					return err
 				}
 			case "trades":
-				o.ChannelTrades(&message)
+				o.channelTrades(&message)
 			}
 		default:
 			if time.Now().After(lastUpdate.Add(time.Second * 10)) {
@@ -541,7 +542,7 @@ func (o *OrderBookBranch) MaintainOrderBook(
 	}
 }
 
-func (o *OrderBookBranch) ChannelOrderBook(message *map[string]interface{}) error {
+func (o *OrderBookBranch) channelOrderBook(message *map[string]interface{}) error {
 	data, ok := (*message)["data"].(map[string]interface{})
 	if !ok {
 		return errors.New("data is not ok")
@@ -563,13 +564,13 @@ func (o *OrderBookBranch) ChannelOrderBook(message *map[string]interface{}) erro
 	}
 	switch action {
 	case "partial":
-		o.InitialOrderBook(&data)
+		o.initialOrderBook(&data)
 	case "update":
 		o.UpdateNewComing(&data)
 		if checkSumf, ok := (*&data)["checksum"].(float64); !ok {
 			return errors.New("did't get checksum after updateNewComing")
 		} else {
-			if err := o.CheckCheckSum(uint32(checkSumf)); err != nil {
+			if err := o.checkCheckSum(uint32(checkSumf)); err != nil {
 				return err
 			}
 		}
@@ -577,7 +578,7 @@ func (o *OrderBookBranch) ChannelOrderBook(message *map[string]interface{}) erro
 	return nil
 }
 
-func (o *OrderBookBranch) ChannelTrades(message *map[string]interface{}) {
+func (o *OrderBookBranch) channelTrades(message *map[string]interface{}) {
 	data, ok := (*message)["data"].([]interface{})
 	if !ok {
 		return
@@ -638,7 +639,7 @@ func (o *OrderBookBranch) ChannelTrades(message *map[string]interface{}) {
 	wg.Wait()
 }
 
-func String2Bytes(s string) []byte {
+func string2Bytes(s string) []byte {
 	sh := (*reflect.StringHeader)(unsafe.Pointer(&s))
 	bh := reflect.SliceHeader{
 		Data: sh.Data,
@@ -648,7 +649,7 @@ func String2Bytes(s string) []byte {
 	return *(*[]byte)(unsafe.Pointer(&bh))
 }
 
-func (o *OrderBookBranch) CheckCheckSum(checkSum uint32) error {
+func (o *OrderBookBranch) checkCheckSum(checkSum uint32) error {
 	o.Bids.mux.RLock()
 	o.Asks.mux.RLock()
 	defer o.Bids.mux.RUnlock()
@@ -668,7 +669,7 @@ func (o *OrderBookBranch) CheckCheckSum(checkSum uint32) error {
 		}
 	}
 	result := strings.Join(list, ":")
-	localCheckSum := crc32.ChecksumIEEE(String2Bytes(result))
+	localCheckSum := crc32.ChecksumIEEE(string2Bytes(result))
 	if localCheckSum != checkSum {
 		return errors.New("checkSum error")
 	}
@@ -692,14 +693,14 @@ func (o *OrderBookBranch) LocateTradeImpact(side string, price, size decimal.Dec
 	}
 }
 
-func FloatHandle(f float64) string {
+func floatHandle(f float64) string {
 	if float64(f) == float64(int(f)) {
 		return strconv.FormatFloat(float64(f), 'f', 1, 32)
 	}
 	return strconv.FormatFloat(float64(f), 'f', -1, 32)
 }
 
-func (o *OrderBookBranch) InitialOrderBook(res *map[string]interface{}) {
+func (o *OrderBookBranch) initialOrderBook(res *map[string]interface{}) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
@@ -711,8 +712,8 @@ func (o *OrderBookBranch) InitialOrderBook(res *map[string]interface{}) {
 		bids := (*res)["bids"].([]interface{})
 		for _, item := range bids {
 			levelData := item.([]interface{})
-			price := FloatHandle(levelData[0].(float64))
-			size := FloatHandle(levelData[1].(float64))
+			price := floatHandle(levelData[0].(float64))
+			size := floatHandle(levelData[1].(float64))
 			o.Bids.Book = append(o.Bids.Book, []string{price, size})
 			// micro part
 			micro := BookMicro{
@@ -730,8 +731,8 @@ func (o *OrderBookBranch) InitialOrderBook(res *map[string]interface{}) {
 		asks := (*res)["asks"].([]interface{})
 		for _, item := range asks {
 			levelData := item.([]interface{})
-			price := FloatHandle(levelData[0].(float64))
-			size := FloatHandle(levelData[1].(float64))
+			price := floatHandle(levelData[0].(float64))
+			size := floatHandle(levelData[1].(float64))
 			o.Asks.Book = append(o.Asks.Book, []string{price, size})
 			// micro part
 			micro := BookMicro{
@@ -744,32 +745,32 @@ func (o *OrderBookBranch) InitialOrderBook(res *map[string]interface{}) {
 	o.SnapShoted = true
 }
 
-type FTXWesocket struct {
+type fTXWebsocket struct {
 	OnErr  bool
 	Logger *log.Logger
 	Conn   *websocket.Conn
 }
 
-type FTXSubscribeMessage struct {
+type fTXSubscribeMessage struct {
 	Op      string `json:"op"`
 	Channel string `json:"channel,omitempty"`
 	Market  string `json:"market,omitempty"`
 }
 
-type ArgsN struct {
+type argsN struct {
 	Key        string `json:"key"`
 	Sign       string `json:"sign"`
 	Time       int64  `json:"time"`
 	Subaccount string `json:"subaccount"`
 }
 
-func (w *FTXWesocket) OutFTXErr() map[string]interface{} {
+func (w *fTXWebsocket) OutFTXErr() map[string]interface{} {
 	w.OnErr = true
 	m := make(map[string]interface{})
 	return m
 }
 
-func FTXDecoding(message *[]byte) (res map[string]interface{}, err error) {
+func fTXDecoding(message *[]byte) (res map[string]interface{}, err error) {
 	if *message == nil {
 		err = errors.New("the incoming message is nil")
 		return nil, err
@@ -781,7 +782,7 @@ func FTXDecoding(message *[]byte) (res map[string]interface{}, err error) {
 	return res, nil
 }
 
-func FTXOrderBookSocket(
+func fTXOrderBookSocket(
 	ctx context.Context,
 	symbol string,
 	logger *log.Logger,
@@ -789,7 +790,7 @@ func FTXOrderBookSocket(
 	reCh *chan error,
 	streamTrade bool,
 ) error {
-	var w FTXWesocket
+	var w fTXWebsocket
 	var duration time.Duration = 300
 	w.Logger = logger
 	w.OnErr = false
@@ -803,7 +804,7 @@ func FTXOrderBookSocket(
 	w.Conn = conn
 	defer conn.Close()
 
-	send, err := GetFTXOrderBookSubscribeMessage(symbol)
+	send, err := getFTXOrderBookSubscribeMessage(symbol)
 	if err != nil {
 		return err
 	}
@@ -811,7 +812,7 @@ func FTXOrderBookSocket(
 		return err
 	}
 	if streamTrade {
-		send, err = GetFTXTradesSubscribeMessage(symbol)
+		send, err = getFTXTradesSubscribeMessage(symbol)
 		if err != nil {
 			return err
 		}
@@ -844,7 +845,7 @@ func FTXOrderBookSocket(
 				logger.Infoln(message)
 				return errors.New(message)
 			}
-			res, err1 := FTXDecoding(&buf)
+			res, err1 := fTXDecoding(&buf)
 			if err1 != nil {
 				d := w.OutFTXErr()
 				*mainCh <- d
@@ -853,7 +854,7 @@ func FTXOrderBookSocket(
 				return err1
 			}
 
-			err2 := HandleFTXWebsocket(&res, mainCh)
+			err2 := handleFTXWebsocket(&res, mainCh)
 			if err2 != nil {
 				d := w.OutFTXErr()
 				*mainCh <- d
@@ -868,7 +869,7 @@ func FTXOrderBookSocket(
 	}
 }
 
-func HandleFTXWebsocket(res *map[string]interface{}, mainCh *chan map[string]interface{}) error {
+func handleFTXWebsocket(res *map[string]interface{}, mainCh *chan map[string]interface{}) error {
 	switch (*res)["type"] {
 	case "error":
 		Msg := (*res)["msg"].(string)
@@ -902,15 +903,29 @@ func HandleFTXWebsocket(res *map[string]interface{}, mainCh *chan map[string]int
 	case "partial":
 		*mainCh <- *res
 	case "update":
-		*mainCh <- *res
+		Channel := (*res)["channel"].(string)
+		switch Channel {
+		case "ticker":
+			if data, ok := (*res)["data"].(map[string]interface{}); ok {
+				st := formatingTimeStamp(data["time"].(float64))
+				if time.Now().After(st.Add(time.Second * 2)) {
+					err := errors.New("websocket data delay more than 2 sec")
+					return err
+				} else {
+					*mainCh <- data
+				}
+			}
+		default:
+			*mainCh <- *res
+		}
 	default:
 		//pass
 	}
 	return nil
 }
 
-func GetFTXOrderBookSubscribeMessage(market string) ([]byte, error) {
-	sub := FTXSubscribeMessage{Op: "subscribe", Channel: "orderbook", Market: market}
+func getFTXOrderBookSubscribeMessage(market string) ([]byte, error) {
+	sub := fTXSubscribeMessage{Op: "subscribe", Channel: "orderbook", Market: market}
 	message, err := json.Marshal(sub)
 	if err != nil {
 		return nil, err
@@ -918,11 +933,16 @@ func GetFTXOrderBookSubscribeMessage(market string) ([]byte, error) {
 	return message, nil
 }
 
-func GetFTXTradesSubscribeMessage(market string) ([]byte, error) {
-	sub := FTXSubscribeMessage{Op: "subscribe", Channel: "trades", Market: market}
+func getFTXTradesSubscribeMessage(market string) ([]byte, error) {
+	sub := fTXSubscribeMessage{Op: "subscribe", Channel: "trades", Market: market}
 	message, err := json.Marshal(sub)
 	if err != nil {
 		return nil, err
 	}
 	return message, nil
+}
+
+func formatingTimeStamp(timeFloat float64) time.Time {
+	sec, dec := math.Modf(timeFloat)
+	return time.Unix(int64(sec), int64(dec*(1e9)))
 }
