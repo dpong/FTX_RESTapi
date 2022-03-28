@@ -53,6 +53,13 @@ func (o *StreamMarketTradesBranch) GetTrades() []FTXTradeData {
 	return trades
 }
 
+func (o *StreamMarketTradesBranch) Close() {
+	(*o.cancel)()
+	o.tradesBranch.Lock()
+	defer o.tradesBranch.Unlock()
+	o.tradesBranch.Trades = []FTXTradeData{}
+}
+
 func tradeStream(symbol string, logger *logrus.Logger) *StreamMarketTradesBranch {
 	o := new(StreamMarketTradesBranch)
 	ctx, cancel := context.WithCancel(context.Background())
