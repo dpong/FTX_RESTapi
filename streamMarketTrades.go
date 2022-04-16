@@ -108,6 +108,7 @@ func (o *StreamMarketTradesBranch) maintainSession(ctx context.Context, symbol s
 
 func (o *StreamMarketTradesBranch) maintain(ctx context.Context, symbol string) error {
 	var duration time.Duration = 30
+	innerErr := make(chan error, 1)
 	url := "wss://ftx.com/ws/"
 	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
 	if err != nil {
@@ -126,32 +127,43 @@ func (o *StreamMarketTradesBranch) maintain(ctx context.Context, symbol string) 
 		return err
 	}
 	o.conn.SetPingHandler(nil)
-	pingpong := time.NewTicker(time.Second * 15)
-	defer pingpong.Stop()
+	go func() {
+		PingManaging := time.NewTicker(time.Second * 15)
+		defer PingManaging.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-innerErr:
+				return
+			case <-PingManaging.C:
+				send := getPingPong()
+				if err := o.conn.WriteMessage(websocket.TextMessage, send); err != nil {
+					o.conn.SetReadDeadline(time.Now().Add(time.Second))
+					return
+				}
+				o.conn.SetReadDeadline(time.Now().Add(time.Second * duration))
+			default:
+				time.Sleep(time.Second)
+			}
+		}
+	}()
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-pingpong.C:
-			sub := fTXSubscribeMessage{Op: "ping"}
-			message, err := json.Marshal(sub)
-			if err != nil {
-				return err
-			}
-			if err := o.conn.WriteMessage(websocket.TextMessage, message); err != nil {
-				o.conn.SetReadDeadline(time.Now().Add(time.Second))
-				return err
-			}
-			o.conn.SetReadDeadline(time.Now().Add(time.Second * duration))
 		default:
 			_, msg, err := o.conn.ReadMessage()
 			if err != nil {
+				innerErr <- errors.New("restart")
 				return err
 			}
 			if err := o.handleFTXTradeSocketMsg(msg); err != nil {
+				innerErr <- errors.New("restart")
 				return err
 			}
 			if err := o.conn.SetReadDeadline(time.Now().Add(time.Second * duration)); err != nil {
+				innerErr <- errors.New("restart")
 				return err
 			}
 		} // end select

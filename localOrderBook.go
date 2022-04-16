@@ -470,7 +470,7 @@ func LocalOrderBook(symbol string, logger *log.Logger, streamTrade bool) *OrderB
 					return
 				} else {
 					if ReStartMainSeesionErrHub(err.Error()) {
-						errCh <- errors.New("Reconnect websocket")
+						errCh <- errors.New("reconnect websocket")
 					}
 					logger.Warningf("Reconnect %s websocket stream.\n", symbol)
 				}
@@ -897,7 +897,7 @@ func handleFTXWebsocket(res *map[string]interface{}, mainCh *chan map[string]int
 	case "info":
 		Code := (*res)["code"].(float64)
 		if Code == 20001 {
-			err := errors.New("Server Restarted, Code 20001。")
+			err := errors.New("server restarted, Code 20001")
 			return err
 		}
 	case "partial":
