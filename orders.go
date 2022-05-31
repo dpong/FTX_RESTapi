@@ -199,9 +199,12 @@ type GetOpenOrdersResponse struct {
 	} `json:"result"`
 }
 
-func (p *Client) GetOpenOrders(symbol string) (result *GetOpenOrdersResponse, err error) {
+// give "" when request for all open orders
+func (p *Client) GetOpenOrdersWithSymbol(symbol string) (result *GetOpenOrdersResponse, err error) {
 	params := make(map[string]string)
-	params["market"] = symbol
+	if symbol != "" {
+		params["market"] = symbol
+	}
 	res, err := p.sendRequest(
 		http.MethodGet,
 		"/orders",

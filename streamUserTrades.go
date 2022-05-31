@@ -34,6 +34,7 @@ type UserTradeData struct {
 	Symbol    string
 	Side      string
 	Oid       string
+	OrderType string
 	IsMaker   bool
 	Price     decimal.Decimal
 	Qty       decimal.Decimal
@@ -46,15 +47,20 @@ type tradeDataMap struct {
 	set map[string][]UserTradeData
 }
 
-func (c *Client) UserTradeStream(logger *logrus.Logger) *StreamUserTradesBranch {
-	return c.userTradeStream(logger)
-}
+// func (c *Client) UserTradeStream(logger *logrus.Logger) *StreamUserTradesBranch {
+// 	return c.userTradeStream(logger)
+// }
 
 func (o *StreamUserTradesBranch) Close() {
 	(*o.cancel)()
 }
 
-func (o *StreamUserTradesBranch) ReadTrade(symbol string) ([]UserTradeData, error) {
+func (c *Client) InitSpotUserData(logger *log.Logger) {
+	c.userTradeStream(logger)
+}
+
+// err is no trade set
+func (o *StreamUserTradesBranch) ReadTradeWithSymbol(symbol string) ([]UserTradeData, error) {
 	uSymbol := strings.ToUpper(symbol)
 	o.tradeSets.mux.Lock()
 	defer o.tradeSets.mux.Unlock()
@@ -69,7 +75,26 @@ func (o *StreamUserTradesBranch) ReadTrade(symbol string) ([]UserTradeData, erro
 	return result, nil
 }
 
-func (c *Client) userTradeStream(logger *logrus.Logger) *StreamUserTradesBranch {
+// err is no trade
+// mix up with multiple symbol's trade data
+func (o *StreamUserTradesBranch) ReadTrade() ([]UserTradeData, error) {
+	o.tradeSets.mux.Lock()
+	defer o.tradeSets.mux.Unlock()
+	var result []UserTradeData
+	for key, item := range o.tradeSets.set {
+		// each symbol
+		result = append(result, item...)
+		// earse old data
+		new := []UserTradeData{}
+		o.tradeSets.set[key] = new
+	}
+	if len(result) == 0 {
+		return result, errors.New("no trade data")
+	}
+	return result, nil
+}
+
+func (c *Client) userTradeStream(logger *logrus.Logger) {
 	o := new(StreamUserTradesBranch)
 	ctx, cancel := context.WithCancel(context.Background())
 	o.cancel = &cancel
@@ -80,7 +105,7 @@ func (c *Client) userTradeStream(logger *logrus.Logger) *StreamUserTradesBranch 
 	o.tradeSets.set = make(map[string][]UserTradeData, 5)
 	o.logger = logger
 	go o.maintainSession(ctx)
-	return o
+	c.userTrade = o
 }
 
 func (u *StreamUserTradesBranch) insertTrade(input *UserTradeData) {
@@ -302,6 +327,12 @@ func (t *StreamUserTradesBranch) handleFTXWebsocket(res map[string]interface{}) 
 			} else {
 				side = s
 			}
+			var orderType string
+			if o, ok := resp["type"].(string); !ok {
+				return errors.New("fail to get side")
+			} else {
+				orderType = o
+			}
 			var st time.Time
 			if s, ok := resp["time"].(string); !ok {
 				return errors.New("fail to get time")
@@ -318,6 +349,7 @@ func (t *StreamUserTradesBranch) handleFTXWebsocket(res map[string]interface{}) 
 			out.Price = price
 			out.Oid = oid
 			out.Side = side
+			out.OrderType = orderType
 			if liq == "maker" {
 				out.IsMaker = true
 			} else {
