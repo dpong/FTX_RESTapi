@@ -51,11 +51,11 @@ type tradeDataMap struct {
 // 	return c.userTradeStream(logger)
 // }
 
-func (o *StreamUserTradesBranch) Close() {
-	(*o.cancel)()
+func (c *Client) CloseUserTradeStream() {
+	(*c.userTrade.cancel)()
 }
 
-func (c *Client) InitSpotUserData(logger *log.Logger) {
+func (c *Client) InitUserTradeStream(logger *log.Logger) {
 	c.userTradeStream(logger)
 }
 
