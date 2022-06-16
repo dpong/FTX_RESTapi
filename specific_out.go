@@ -45,7 +45,7 @@ func (c *Client) GetOpenOrders() ([][]string, bool) {
 func (c *Client) GetTradeReports() ([][]string, bool) {
 	var result [][]string
 	for {
-		trades, err := c.userTrade.ReadTrade()
+		trades, err := c.ReadUserTrade()
 		if err != nil {
 			break
 		}

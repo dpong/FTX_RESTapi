@@ -60,33 +60,33 @@ func (c *Client) InitUserTradeStream(logger *log.Logger) {
 }
 
 // err is no trade set
-func (o *StreamUserTradesBranch) ReadTradeWithSymbol(symbol string) ([]UserTradeData, error) {
+func (c *Client) ReadUserTradeWithSymbol(symbol string) ([]UserTradeData, error) {
 	uSymbol := strings.ToUpper(symbol)
-	o.tradeSets.mux.Lock()
-	defer o.tradeSets.mux.Unlock()
+	c.userTrade.tradeSets.mux.Lock()
+	defer c.userTrade.tradeSets.mux.Unlock()
 	var result []UserTradeData
-	if data, ok := o.tradeSets.set[uSymbol]; !ok {
+	if data, ok := c.userTrade.tradeSets.set[uSymbol]; !ok {
 		return data, errors.New("no trade set can be requested")
 	} else {
 		new := []UserTradeData{}
 		result = data
-		o.tradeSets.set[uSymbol] = new
+		c.userTrade.tradeSets.set[uSymbol] = new
 	}
 	return result, nil
 }
 
 // err is no trade
 // mix up with multiple symbol's trade data
-func (o *StreamUserTradesBranch) ReadTrade() ([]UserTradeData, error) {
-	o.tradeSets.mux.Lock()
-	defer o.tradeSets.mux.Unlock()
+func (c *Client) ReadUserTrade() ([]UserTradeData, error) {
+	c.userTrade.tradeSets.mux.Lock()
+	defer c.userTrade.tradeSets.mux.Unlock()
 	var result []UserTradeData
-	for key, item := range o.tradeSets.set {
+	for key, item := range c.userTrade.tradeSets.set {
 		// each symbol
 		result = append(result, item...)
 		// earse old data
 		new := []UserTradeData{}
-		o.tradeSets.set[key] = new
+		c.userTrade.tradeSets.set[key] = new
 	}
 	if len(result) == 0 {
 		return result, errors.New("no trade data")
