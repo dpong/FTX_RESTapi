@@ -558,8 +558,8 @@ func (o *OrderBookBranch) channelOrderBook(message *map[string]interface{}) erro
 		return errors.New("get nil when getting event time")
 	} else {
 		stamp := time.Unix(int64(st), 0)
-		if time.Now().After(stamp.Add(time.Second * 5)) {
-			return errors.New("websocket data delay more than 5 sec")
+		if time.Now().After(stamp.Add(time.Second * 2)) {
+			return errors.New("websocket data delay more than 2 sec")
 		}
 	}
 	switch action {
