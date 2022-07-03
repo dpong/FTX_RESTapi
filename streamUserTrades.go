@@ -61,9 +61,9 @@ func (c *Client) InitUserTradeStream(logger *log.Logger) {
 
 // err is no trade set
 func (c *Client) ReadUserTradeWithSymbol(symbol string) ([]UserTradeData, error) {
-	uSymbol := strings.ToUpper(symbol)
 	c.userTrade.tradeSets.mux.Lock()
 	defer c.userTrade.tradeSets.mux.Unlock()
+	uSymbol := strings.ToUpper(symbol)
 	var result []UserTradeData
 	if data, ok := c.userTrade.tradeSets.set[uSymbol]; !ok {
 		return data, errors.New("no trade set can be requested")
@@ -142,7 +142,9 @@ func (o *StreamUserTradesBranch) maintain(ctx context.Context) error {
 	var duration time.Duration = 30
 	innerErr := make(chan error, 1)
 	url := "wss://ftx.com/ws/"
-	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+	// wait 5 second, if the hand shake fail, will terminate the dail
+	dailCtx, _ := context.WithDeadline(ctx, time.Now().Add(time.Second*5))
+	conn, _, err := websocket.DefaultDialer.DialContext(dailCtx, url, nil)
 	if err != nil {
 		return err
 	}
@@ -265,7 +267,7 @@ func (t *StreamUserTradesBranch) handleFTXWebsocket(res map[string]interface{}) 
 	case res["type"] == "subscribed":
 		Channel := res["channel"].(string)
 		var buffer bytes.Buffer
-		buffer.WriteString("Sub | FTX channel: ")
+		buffer.WriteString("Sub | FTX private channel: ")
 		buffer.WriteString(Channel)
 		t.logger.Infoln(buffer.String())
 		return nil

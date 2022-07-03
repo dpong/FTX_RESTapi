@@ -110,7 +110,9 @@ func (o *StreamMarketTradesBranch) maintain(ctx context.Context, symbol string) 
 	var duration time.Duration = 30
 	innerErr := make(chan error, 1)
 	url := "wss://ftx.com/ws/"
-	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+	// wait 5 second, if the hand shake fail, will terminate the dail
+	dailCtx, _ := context.WithDeadline(ctx, time.Now().Add(time.Second*5))
+	conn, _, err := websocket.DefaultDialer.DialContext(dailCtx, url, nil)
 	if err != nil {
 		return err
 	}
