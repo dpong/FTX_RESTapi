@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"hash/crc32"
-	"math"
 	"reflect"
 	"strconv"
 	"strings"
@@ -909,13 +908,7 @@ func handleFTXWebsocket(res *map[string]interface{}, mainCh *chan map[string]int
 		switch Channel {
 		case "ticker":
 			if data, ok := (*res)["data"].(map[string]interface{}); ok {
-				st := formatingTimeStamp(data["time"].(float64))
-				if time.Now().After(st.Add(time.Second * 2)) {
-					err := errors.New("websocket data delay more than 2 sec")
-					return err
-				} else {
-					*mainCh <- data
-				}
+				*mainCh <- data
 			}
 		default:
 			*mainCh <- *res
@@ -942,9 +935,4 @@ func getFTXTradesSubscribeMessage(market string) ([]byte, error) {
 		return nil, err
 	}
 	return message, nil
-}
-
-func formatingTimeStamp(timeFloat float64) time.Time {
-	sec, dec := math.Modf(timeFloat)
-	return time.Unix(int64(sec), int64(dec*(1e9)))
 }

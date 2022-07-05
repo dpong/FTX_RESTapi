@@ -79,8 +79,6 @@ func (o *StreamMarketTradesBranch) listen(ctx context.Context) {
 			return
 		case trade := <-o.tradeChan:
 			o.appendNewTrade(&trade)
-		default:
-			time.Sleep(time.Second)
 		}
 	}
 }
