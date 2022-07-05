@@ -129,7 +129,11 @@ func (s *StreamTickerBranch) maintainStreamTicker(
 			return nil
 		case message := <-(*ticker):
 			// millisecond level
-			ts := time.UnixMicro(int64(message["time"].(float64) * 1000000))
+			rawTs, ok := message["time"].(float64)
+			if !ok {
+				continue
+			}
+			ts := time.UnixMicro(int64(rawTs * 1000000))
 			var bidPrice, askPrice, bidQty, askQty string
 			if bid, ok := message["bid"].(float64); ok {
 				bidDec := decimal.NewFromFloat(bid)
