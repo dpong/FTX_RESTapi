@@ -139,7 +139,7 @@ func (o *StreamUserTradesBranch) maintainSession(ctx context.Context) {
 }
 
 func (o *StreamUserTradesBranch) maintain(ctx context.Context) error {
-	var duration time.Duration = 30
+	var duration time.Duration = 300
 	innerErr := make(chan error, 1)
 	url := "wss://ftx.com/ws/"
 	// wait 5 second, if the hand shake fail, will terminate the dail
