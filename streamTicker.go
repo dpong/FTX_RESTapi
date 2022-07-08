@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -122,7 +123,6 @@ func (s *StreamTickerBranch) maintainStreamTicker(
 	ticker *chan map[string]interface{},
 	errCh *chan error,
 ) error {
-	lastUpdate := time.Now()
 	for {
 		select {
 		case <-ctx.Done():
@@ -134,6 +134,10 @@ func (s *StreamTickerBranch) maintainStreamTicker(
 				continue
 			}
 			ts := time.UnixMicro(int64(rawTs * 1000000))
+
+			// test
+			fmt.Println(time.Now().Sub(ts))
+
 			var bidPrice, askPrice, bidQty, askQty string
 			if bid, ok := message["bid"].(float64); ok {
 				bidDec := decimal.NewFromFloat(bid)
@@ -157,15 +161,6 @@ func (s *StreamTickerBranch) maintainStreamTicker(
 			}
 			s.updateBidData(bidPrice, bidQty, ts)
 			s.updateAskData(askPrice, askQty, ts)
-			lastUpdate = time.Now()
-		default:
-			if time.Now().After(lastUpdate.Add(time.Second * 10)) {
-				// 10 sec without updating
-				err := errors.New("reconnect because of time out")
-				*errCh <- err
-				return err
-			}
-			time.Sleep(time.Millisecond * 100)
 		}
 	}
 }
@@ -178,9 +173,10 @@ func fTXTickerSocket(
 	reCh *chan error,
 ) error {
 	var w fTXWebsocket
-	var duration time.Duration = 300
+	var duration time.Duration = 30
 	w.Logger = logger
 	w.OnErr = false
+	innerErr := make(chan error, 1)
 	symbol = strings.ToUpper(symbol)
 	url := "wss://ftx.com/ws/"
 	// wait 5 second, if the hand shake fail, will terminate the dail
@@ -189,7 +185,7 @@ func fTXTickerSocket(
 	if err != nil {
 		return err
 	}
-	logger.Infof("FTX %s orderBook socket connected.\n", symbol)
+	logger.Infof("FTX %s ticker stream connected.\n", symbol)
 	w.Conn = conn
 	defer conn.Close()
 
@@ -203,42 +199,47 @@ func fTXTickerSocket(
 	if err := w.Conn.SetReadDeadline(time.Now().Add(time.Second * duration)); err != nil {
 		return err
 	}
+	w.Conn.SetPingHandler(nil)
+	go func() {
+		PingManaging := time.NewTicker(time.Second * 15)
+		defer PingManaging.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-innerErr:
+				return
+			case <-PingManaging.C:
+				send := getPingPong()
+				if err := w.Conn.WriteMessage(websocket.TextMessage, send); err != nil {
+					w.Conn.SetReadDeadline(time.Now().Add(time.Millisecond * 5))
+					return
+				}
+				w.Conn.SetReadDeadline(time.Now().Add(time.Second * duration))
+			}
+		}
+	}()
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case err := <-(*reCh):
+			innerErr <- errors.New("restart")
 			return err
 		default:
-			if conn == nil {
-				d := w.OutFTXErr()
-				*mainCh <- d
-				message := "FTX reconnect..."
-				logger.Infoln(message)
-				return errors.New(message)
-			}
 			_, buf, err := conn.ReadMessage()
 			if err != nil {
-				d := w.OutFTXErr()
-				*mainCh <- d
-				message := "FTX reconnect..."
-				logger.Infoln(message)
-				return errors.New(message)
+				innerErr <- errors.New("restart")
+				return err
 			}
 			res, err1 := fTXDecoding(&buf)
 			if err1 != nil {
-				d := w.OutFTXErr()
-				*mainCh <- d
-				message := "FTX reconnect..."
-				logger.Infoln(message, err1)
+				innerErr <- errors.New("restart")
 				return err1
 			}
 			err2 := handleFTXWebsocket(&res, mainCh)
 			if err2 != nil {
-				d := w.OutFTXErr()
-				*mainCh <- d
-				message := "FTX reconnect..."
-				logger.Infoln(message)
+				innerErr <- errors.New("restart")
 				return err2
 			}
 			if err := w.Conn.SetReadDeadline(time.Now().Add(time.Second * duration)); err != nil {

@@ -105,7 +105,7 @@ func (o *StreamMarketTradesBranch) maintainSession(ctx context.Context, symbol s
 }
 
 func (o *StreamMarketTradesBranch) maintain(ctx context.Context, symbol string) error {
-	var duration time.Duration = 300
+	var duration time.Duration = 30
 	innerErr := make(chan error, 1)
 	url := "wss://ftx.com/ws/"
 	// wait 5 second, if the hand shake fail, will terminate the dail
@@ -139,12 +139,10 @@ func (o *StreamMarketTradesBranch) maintain(ctx context.Context, symbol string) 
 			case <-PingManaging.C:
 				send := getPingPong()
 				if err := o.conn.WriteMessage(websocket.TextMessage, send); err != nil {
-					o.conn.SetReadDeadline(time.Now().Add(time.Second))
+					o.conn.SetReadDeadline(time.Now().Add(time.Millisecond * 5))
 					return
 				}
 				o.conn.SetReadDeadline(time.Now().Add(time.Second * duration))
-			default:
-				time.Sleep(time.Second)
 			}
 		}
 	}()
