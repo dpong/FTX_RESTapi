@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -134,10 +133,6 @@ func (s *StreamTickerBranch) maintainStreamTicker(
 				continue
 			}
 			ts := time.UnixMicro(int64(rawTs * 1000000))
-
-			// test
-			fmt.Println(time.Now().Sub(ts))
-
 			var bidPrice, askPrice, bidQty, askQty string
 			if bid, ok := message["bid"].(float64); ok {
 				bidDec := decimal.NewFromFloat(bid)
