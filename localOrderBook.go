@@ -339,14 +339,6 @@ func (o *OrderBookBranch) channelOrderBook(message *map[string]interface{}) erro
 	if !ok {
 		return errors.New("data action is not ok")
 	}
-	if st, ok := data["time"].(float64); !ok {
-		return errors.New("get nil when getting event time")
-	} else {
-		stamp := time.Unix(int64(st), 0)
-		if time.Now().After(stamp.Add(time.Second * 2)) {
-			return errors.New("websocket data delay more than 2 sec")
-		}
-	}
 	switch action {
 	case "partial":
 		o.initialOrderBook(&data)
