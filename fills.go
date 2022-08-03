@@ -29,7 +29,9 @@ type FillsResponse struct {
 
 func (p *Client) GetFills(symbol string, limit int) (fills *FillsResponse, err error) {
 	params := make(map[string]string)
-	params["market"] = symbol
+	if symbol != "" {
+		params["market"] = symbol
+	}
 	params["limit"] = fmt.Sprintf("%d", limit)
 	res, err := p.sendRequest(
 		http.MethodGet, "/fills",

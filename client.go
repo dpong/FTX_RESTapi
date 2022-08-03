@@ -26,6 +26,7 @@ type Client struct {
 	subaccount  string
 	HTTPC       *http.Client
 	userTrade   *StreamUserTradesBranch
+	fillDetect  fillsDetecting
 }
 
 func New(key, secret, subaccount string) *Client {

@@ -104,7 +104,7 @@ func (c *Client) userTradeStream(logger *logrus.Logger) {
 
 	o.tradeSets.set = make(map[string][]UserTradeData, 5)
 	o.logger = logger
-	go o.maintainSession(ctx)
+	go c.maintainSession(ctx)
 	c.userTrade = o
 }
 
@@ -123,23 +123,24 @@ func (u *StreamUserTradesBranch) insertTrade(input *UserTradeData) {
 	}
 }
 
-func (o *StreamUserTradesBranch) maintainSession(ctx context.Context) {
+func (c *Client) maintainSession(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			if err := o.maintain(ctx); err == nil {
+			if err := c.maintain(ctx); err == nil {
 				return
 			} else {
-				o.logger.Warningf("reconnect FTX user trade stream with err: %s\n", err.Error())
+				c.beforeFillsSnapShot()
+				c.userTrade.logger.Warningf("reconnect FTX user trade stream with err: %s\n", err.Error())
 			}
 		}
 	}
 }
 
-func (o *StreamUserTradesBranch) maintain(ctx context.Context) error {
-	var duration time.Duration = 300
+func (c *Client) maintain(ctx context.Context) error {
+	var duration time.Duration = 10
 	innerErr := make(chan error, 1)
 	url := "wss://ftx.com/ws/"
 	// wait 5 second, if the hand shake fail, will terminate the dail
@@ -148,20 +149,23 @@ func (o *StreamUserTradesBranch) maintain(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	o.conn = conn
-	defer o.conn.Close()
-	send := o.getAuthMessage(o.key, o.secret, o.subaccount)
-	if err := o.conn.WriteMessage(websocket.TextMessage, send); err != nil {
+	c.userTrade.conn = conn
+	defer c.userTrade.conn.Close()
+	send := c.userTrade.getAuthMessage(c.userTrade.key, c.userTrade.secret, c.userTrade.subaccount)
+	if err := c.userTrade.conn.WriteMessage(websocket.TextMessage, send); err != nil {
 		return err
 	}
-	send = o.getSubscribeMessage("fills", "")
-	if err := o.conn.WriteMessage(websocket.TextMessage, send); err != nil {
+	send = c.userTrade.getSubscribeMessage("fills", "")
+	if err := c.userTrade.conn.WriteMessage(websocket.TextMessage, send); err != nil {
 		return err
 	}
-	if err := o.conn.SetReadDeadline(time.Now().Add(time.Second * duration)); err != nil {
+	if err := c.userTrade.conn.SetReadDeadline(time.Now().Add(time.Second * duration)); err != nil {
 		return err
 	}
-	o.conn.SetPingHandler(nil)
+	// detecting missing fills
+	c.afterFillsSnapShot()
+
+	c.userTrade.conn.SetPingHandler(nil)
 	go func() {
 		PingManaging := time.NewTicker(time.Second * 15)
 		defer PingManaging.Stop()
@@ -173,11 +177,11 @@ func (o *StreamUserTradesBranch) maintain(ctx context.Context) error {
 				return
 			case <-PingManaging.C:
 				send := getPingPong()
-				if err := o.conn.WriteMessage(websocket.TextMessage, send); err != nil {
-					o.conn.SetReadDeadline(time.Now().Add(time.Second))
+				if err := c.userTrade.conn.WriteMessage(websocket.TextMessage, send); err != nil {
+					c.userTrade.conn.SetReadDeadline(time.Now().Add(time.Second))
 					return
 				}
-				o.conn.SetReadDeadline(time.Now().Add(time.Second * duration))
+				c.userTrade.conn.SetReadDeadline(time.Now().Add(time.Second * duration))
 			default:
 				time.Sleep(time.Second)
 			}
@@ -188,22 +192,22 @@ func (o *StreamUserTradesBranch) maintain(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		default:
-			_, msg, err := o.conn.ReadMessage()
+			_, msg, err := c.userTrade.conn.ReadMessage()
 			if err != nil {
 				innerErr <- errors.New("restart")
 				return err
 			}
-			res, err1 := o.decoding(msg)
+			res, err1 := c.userTrade.decoding(msg)
 			if err1 != nil {
 				innerErr <- errors.New("restart")
 				return err1
 			}
-			err2 := o.handleFTXWebsocket(res)
+			err2 := c.userTrade.handleFTXWebsocket(res)
 			if err2 != nil {
 				innerErr <- errors.New("restart")
 				return err2
 			}
-			if err := o.conn.SetReadDeadline(time.Now().Add(time.Second * duration)); err != nil {
+			if err := c.userTrade.conn.SetReadDeadline(time.Now().Add(time.Second * duration)); err != nil {
 				innerErr <- errors.New("restart")
 				return err
 			}
@@ -374,4 +378,65 @@ func getPingPong() []byte {
 		log.Println(err)
 	}
 	return message
+}
+
+// missing fills detecting
+
+type fillsDetecting struct {
+	before *FillsResponse
+	after  *FillsResponse
+}
+
+func (c *Client) beforeFillsSnapShot() error {
+	if res, err := c.GetFills("", 100); err != nil {
+		return err
+	} else {
+		c.fillDetect.before = res
+	}
+	return nil
+}
+
+func (c *Client) afterFillsSnapShot() error {
+	if c.fillDetect.before == nil {
+		return nil
+	}
+	if res, err := c.GetFills("", 100); err != nil {
+		return err
+	} else {
+		c.fillDetect.after = res
+	}
+	for _, trade := range c.fillDetect.after.Result {
+		if c.thisTradeIdWeHaveIt(trade.ID) {
+			continue
+		}
+		// missing fill detected
+		out := new(UserTradeData)
+		out.Fee = decimal.NewFromFloat(trade.Fee)
+		out.Qty = decimal.NewFromFloat(trade.Size)
+		out.Price = decimal.NewFromFloat(trade.Price)
+		out.Oid = decimal.NewFromFloat(trade.OrderID).String()
+		out.Side = trade.Side
+		out.OrderType = trade.Type
+		if trade.Liquidity == "maker" {
+			out.IsMaker = true
+		} else {
+			out.IsMaker = false
+		}
+		out.Symbol = trade.Market
+		out.TimeStamp = trade.Time
+		c.userTrade.insertTrade(out)
+	}
+	// clear
+	c.fillDetect.before = nil
+	c.fillDetect.after = nil
+	return nil
+}
+
+func (c *Client) thisTradeIdWeHaveIt(tradeId float64) bool {
+	for _, beTrade := range c.fillDetect.before.Result {
+		if tradeId == beTrade.ID {
+			return true
+		}
+	}
+	return false
 }
