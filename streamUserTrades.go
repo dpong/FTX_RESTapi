@@ -140,7 +140,7 @@ func (c *Client) maintainSession(ctx context.Context) {
 }
 
 func (c *Client) maintain(ctx context.Context) error {
-	var duration time.Duration = 10
+	var duration time.Duration = 300
 	innerErr := make(chan error, 1)
 	url := "wss://ftx.com/ws/"
 	// wait 5 second, if the hand shake fail, will terminate the dail
