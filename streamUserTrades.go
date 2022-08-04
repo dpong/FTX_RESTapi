@@ -19,12 +19,16 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+var duration time.Duration = 20
+
 type StreamUserTradesBranch struct {
 	cancel     *context.CancelFunc
 	conn       *websocket.Conn
 	key        string
 	secret     string
 	subaccount string
+
+	subscribeCheck subscribeCheck
 
 	tradeSets tradeDataMap
 	logger    *logrus.Logger
@@ -47,9 +51,10 @@ type tradeDataMap struct {
 	set map[string][]UserTradeData
 }
 
-// func (c *Client) UserTradeStream(logger *logrus.Logger) *StreamUserTradesBranch {
-// 	return c.userTradeStream(logger)
-// }
+type subscribeCheck struct {
+	subTime time.Time
+	done    bool
+}
 
 func (c *Client) CloseUserTradeStream() {
 	(*c.userTrade.cancel)()
@@ -140,7 +145,6 @@ func (c *Client) maintainSession(ctx context.Context) {
 }
 
 func (c *Client) maintain(ctx context.Context) error {
-	var duration time.Duration = 300
 	innerErr := make(chan error, 1)
 	url := "wss://ftx.com/ws/"
 	// wait 5 second, if the hand shake fail, will terminate the dail
@@ -151,6 +155,8 @@ func (c *Client) maintain(ctx context.Context) error {
 	}
 	c.userTrade.conn = conn
 	defer c.userTrade.conn.Close()
+	// make sure subscribe is done in time
+	c.userTrade.subscribeCheck.subTime = time.Now()
 	send := c.userTrade.getAuthMessage(c.userTrade.key, c.userTrade.secret, c.userTrade.subaccount)
 	if err := c.userTrade.conn.WriteMessage(websocket.TextMessage, send); err != nil {
 		return err
@@ -167,7 +173,7 @@ func (c *Client) maintain(ctx context.Context) error {
 
 	c.userTrade.conn.SetPingHandler(nil)
 	go func() {
-		PingManaging := time.NewTicker(time.Second * 15)
+		PingManaging := time.NewTicker(time.Second * 10)
 		defer PingManaging.Stop()
 		for {
 			select {
@@ -178,10 +184,9 @@ func (c *Client) maintain(ctx context.Context) error {
 			case <-PingManaging.C:
 				send := getPingPong()
 				if err := c.userTrade.conn.WriteMessage(websocket.TextMessage, send); err != nil {
-					c.userTrade.conn.SetReadDeadline(time.Now().Add(time.Second))
+					c.userTrade.conn.SetReadDeadline(time.Now().Add(time.Millisecond * 500))
 					return
 				}
-				c.userTrade.conn.SetReadDeadline(time.Now().Add(time.Second * duration))
 			default:
 				time.Sleep(time.Second)
 			}
@@ -192,6 +197,11 @@ func (c *Client) maintain(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		default:
+			if c.userTrade.conn == nil {
+				message := "FTX private channel disconnected..."
+				innerErr <- errors.New("restart")
+				return errors.New(message)
+			}
 			_, msg, err := c.userTrade.conn.ReadMessage()
 			if err != nil {
 				innerErr <- errors.New("restart")
@@ -256,6 +266,11 @@ func (t *StreamUserTradesBranch) decoding(message []byte) (res map[string]interf
 }
 
 func (t *StreamUserTradesBranch) handleFTXWebsocket(res map[string]interface{}) error {
+	if !t.subscribeCheck.done {
+		if time.Now().After(t.subscribeCheck.subTime.Add(time.Second * 10)) {
+			return errors.New("fail to subscribe in 10s")
+		}
+	}
 	switch {
 	case res["type"] == "error":
 		Msg := res["msg"].(string)
@@ -269,16 +284,22 @@ func (t *StreamUserTradesBranch) handleFTXWebsocket(res map[string]interface{}) 
 		err := errors.New(buffer.String())
 		return err
 	case res["type"] == "subscribed":
+		// subscribe done
+		t.subscribeCheck.done = true
 		Channel := res["channel"].(string)
 		var buffer bytes.Buffer
 		buffer.WriteString("Sub | FTX private channel: ")
 		buffer.WriteString(Channel)
 		t.logger.Infoln(buffer.String())
-		return nil
 	case res["type"] == "info":
 		Code := res["code"].(float64)
 		if Code == 20001 {
 			err := errors.New("server restart, code 20001。")
+			return err
+		}
+	case res["type"] == "pong":
+		// extend
+		if err := t.conn.SetReadDeadline(time.Now().Add(time.Second * duration)); err != nil {
 			return err
 		}
 	case res["type"] == "update":
@@ -364,9 +385,9 @@ func (t *StreamUserTradesBranch) handleFTXWebsocket(res map[string]interface{}) 
 			out.Symbol = symbol
 			out.TimeStamp = st
 			t.insertTrade(out)
-			return nil
 		}
 	default:
+
 	}
 	return nil
 }
