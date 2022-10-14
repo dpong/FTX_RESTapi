@@ -5,12 +5,10 @@ import (
 	"context"
 	"errors"
 	"hash/crc32"
-	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/gorilla/websocket"
 	"github.com/shopspring/decimal"
@@ -356,13 +354,7 @@ func (o *OrderBookBranch) channelOrderBook(message *map[string]interface{}) erro
 }
 
 func string2Bytes(s string) []byte {
-	sh := (*reflect.StringHeader)(unsafe.Pointer(&s))
-	bh := reflect.SliceHeader{
-		Data: sh.Data,
-		Len:  sh.Len,
-		Cap:  sh.Len,
-	}
-	return *(*[]byte)(unsafe.Pointer(&bh))
+	return bytes.NewBufferString(s).Bytes()
 }
 
 func (o *OrderBookBranch) checkCheckSum(checkSum uint32) error {
